@@ -1,0 +1,313 @@
+/* BAITO 디자인 토큰 — Tailwind CSS v4 (@theme)
+   출처: BAITO 디자인 시스템(https://claude.ai/artifact/AjEHPSh1DJEdUvGomERHHN) tokens.json 과 1:1.
+   값이 바뀌면 디자인 시스템의 tokens.json 을 먼저 고치고 이 파일을 따라 맞춘다.
+   폰트는 next/font 가 --font-mplus / --font-noto-kr 변수로 주입한다.
+   테마 전환: <html data-theme="shinya">  / 직장 전환: <body data-workplace="hoteru">
+   클래스 예: bg-surface text-ink border-border rounded-xl px-5 text-pos-option shadow-hairline */
+
+/* ── 1. 원시값(primitive). 테마와 무관한 실제 색 ───────────────────────── */
+:root {
+  --baito-white: #ffffff;
+  --baito-neon-50: #f4f6f2;   /* 형광등 백 */
+  --baito-neon-100: #e9ece6;
+  --baito-neon-200: #dde1da;
+  --baito-neon-300: #c9cec6;
+  --baito-neon-400: #aeb4be;
+  --baito-neon-500: #8a9099;
+  --baito-neon-600: #5b616e;
+  --baito-ink-700: #3c424d;
+  --baito-ink-750: #2c313a;
+  --baito-ink-800: #262a33;
+  --baito-ink-850: #1e2128;
+  --baito-ink-900: #1a1d23;
+  --baito-ink-950: #14161b;
+  --baito-ink-1000: #0f1115;
+  --baito-neon-950: #f2f4f0;
+
+  --baito-blue-100: #dce7ff;
+  --baito-blue-300: #7fa6f9;
+  --baito-blue-400: #5b8df7;
+  --baito-blue-500: #2a6df4;   /* BAITO 블루 */
+  --baito-blue-600: #1d54c4;
+  --baito-blue-900: #1b2a4a;
+
+  --baito-plum-100: #ede6fa;
+  --baito-plum-300: #a98beb;
+  --baito-plum-500: #7a4fd1;
+  --baito-plum-900: #2a1f45;
+
+  --baito-kaki-100: #fbe9df;
+  --baito-kaki-300: #f0865a;
+  --baito-kaki-500: #d9612b;
+  --baito-kaki-900: #3d2217;
+
+  --baito-teal-100: #dcf2f2;
+  --baito-teal-300: #3dbabc;
+  --baito-teal-500: #0f8b8d;
+  --baito-teal-900: #0f2f30;
+
+  --baito-red-100: #ffece7;
+  --baito-red-300: #ff9c85;
+  --baito-red-400: #ff7a5c;
+  --baito-red-500: #ff5a36;   /* 짜증 */
+  --baito-red-700: #c8322b;
+  --baito-red-900: #3a1f19;
+
+  --baito-green-100: #e6f8ee;
+  --baito-green-200: #9cf0c0; /* 레지 글로우 */
+  --baito-green-300: #7fe0b0;
+  --baito-green-400: #2bcb80;
+  --baito-green-500: #17b26a; /* 정답 */
+  --baito-green-700: #0e8a4f;
+  --baito-green-900: #14301f;
+
+  --baito-amber-100: #fff8e6;
+  --baito-amber-200: #fff3e0;
+  --baito-amber-300: #ffb27a;
+  --baito-amber-500: #f2c94c; /* 점장 */
+  --baito-amber-700: #b4500f;
+  --baito-amber-900: #3a2a12;
+
+  --baito-wood-200: #efe6d4;
+  --baito-wood-300: #d8cdb8;
+  --baito-wood-600: #8a7d66;
+  --baito-wood-700: #6e6250;
+  --baito-skin-200: #f3d6c2;
+}
+
+/* ── 2. 시맨틱 토큰 — 昼(기본) ────────────────────────────────────────── */
+:root, [data-theme="hiru"] {
+  --color-surface: var(--baito-neon-50);
+  --color-surface-raised: var(--baito-white);
+  --color-surface-sunken: var(--baito-neon-100);
+  --color-ink: var(--baito-ink-900);
+  --color-ink-muted: var(--baito-neon-600);
+  --color-ink-faint: var(--baito-neon-500);
+  --color-border: var(--baito-neon-200);
+  --color-border-strong: var(--baito-neon-300);
+
+  --color-shell: var(--baito-ink-900);
+  --color-shell-raised: var(--baito-ink-800);
+  --color-shell-ink: var(--baito-white);
+  --color-shell-muted: var(--baito-neon-400);
+  --color-shell-border: var(--baito-ink-700);
+
+  --color-brand: var(--baito-blue-500);
+  --color-brand-strong: var(--baito-blue-600);
+  --color-brand-soft: var(--baito-blue-100);
+  --color-brand-ink: var(--baito-white);
+
+  --color-workplace-konbini: var(--baito-blue-500);
+  --color-workplace-konbini-soft: var(--baito-blue-100);
+  --color-workplace-hoteru: var(--baito-plum-500);
+  --color-workplace-hoteru-soft: var(--baito-plum-100);
+  --color-workplace-shokudo: var(--baito-kaki-500);
+  --color-workplace-shokudo-soft: var(--baito-kaki-100);
+  --color-workplace-kuko: var(--baito-teal-500);
+  --color-workplace-kuko-soft: var(--baito-teal-100);
+
+  --color-irritation: var(--baito-red-500);
+  --color-irritation-soft: var(--baito-red-100);
+  --color-irritation-ink: var(--baito-red-700);
+  --color-perfect: var(--baito-green-500);
+  --color-perfect-soft: var(--baito-green-100);
+  --color-perfect-ink: var(--baito-green-700);
+  --color-tip: var(--baito-amber-500);
+  --color-tip-soft: var(--baito-amber-100);
+  --color-combo: var(--baito-amber-700);
+  --color-combo-soft: var(--baito-amber-200);
+  --color-register-glow: var(--baito-green-200);
+
+  --color-scene-counter: var(--baito-wood-300);
+  --color-scene-counter-edge: var(--baito-wood-200);
+  --color-scene-skin: var(--baito-skin-200);
+
+  --shadow-hairline: 0 1px 0 #d5d9d2;
+  --shadow-hairline-up: 0 -1px 0 #e2e6e0;
+  --shadow-panel-up: 0 -2px 0 #e2e6e0;
+  --shadow-press: 0 2px 0 var(--color-brand-strong);
+  --shadow-press-lg: 0 3px 0 var(--color-brand);
+  --shadow-receipt: 0 10px 30px rgb(10 30 80 / 0.25);
+  --shadow-focus: 0 0 0 3px var(--color-brand-soft);
+}
+
+/* ── 2b. 深夜 테마 ─────────────────────────────────────────────────────── */
+[data-theme="shinya"] {
+  --color-surface: var(--baito-ink-950);
+  --color-surface-raised: var(--baito-ink-850);
+  --color-surface-sunken: var(--baito-ink-1000);
+  --color-ink: var(--baito-neon-950);
+  --color-ink-muted: var(--baito-neon-400);
+  --color-ink-faint: #7c828c;
+  --color-border: var(--baito-ink-750);
+  --color-border-strong: var(--baito-ink-700);
+
+  --color-shell: var(--baito-ink-1000);
+  --color-shell-raised: var(--baito-ink-900);
+  --color-shell-ink: var(--baito-neon-950);
+  --color-shell-border: var(--baito-ink-750);
+
+  --color-brand: var(--baito-blue-400);
+  --color-brand-strong: var(--baito-blue-300);
+  --color-brand-soft: var(--baito-blue-900);
+  --color-brand-ink: var(--baito-ink-1000);
+
+  --color-workplace-konbini: var(--baito-blue-400);
+  --color-workplace-konbini-soft: var(--baito-blue-900);
+  --color-workplace-hoteru: var(--baito-plum-300);
+  --color-workplace-hoteru-soft: var(--baito-plum-900);
+  --color-workplace-shokudo: var(--baito-kaki-300);
+  --color-workplace-shokudo-soft: var(--baito-kaki-900);
+  --color-workplace-kuko: var(--baito-teal-300);
+  --color-workplace-kuko-soft: var(--baito-teal-900);
+
+  --color-irritation: var(--baito-red-400);
+  --color-irritation-soft: var(--baito-red-900);
+  --color-irritation-ink: var(--baito-red-300);
+  --color-perfect: var(--baito-green-400);
+  --color-perfect-soft: var(--baito-green-900);
+  --color-perfect-ink: var(--baito-green-300);
+  --color-tip-soft: var(--baito-amber-900);
+  --color-combo: var(--baito-amber-300);
+  --color-combo-soft: var(--baito-amber-900);
+
+  --color-scene-counter: var(--baito-wood-700);
+  --color-scene-counter-edge: var(--baito-wood-600);
+
+  --shadow-hairline: 0 1px 0 #0f1115;
+  --shadow-hairline-up: 0 -1px 0 #0f1115;
+  --shadow-panel-up: 0 -2px 0 #0f1115;
+  --shadow-receipt: 0 10px 30px rgb(0 0 0 / 0.5);
+}
+
+/* ── 2c. 직장 슬롯 — accent는 현재 직장을 따라간다 ───────────────────────── */
+:root, [data-workplace="konbini"] {
+  --color-accent: var(--color-workplace-konbini);
+  --color-accent-soft: var(--color-workplace-konbini-soft);
+}
+[data-workplace="hoteru"]  { --color-accent: var(--color-workplace-hoteru);  --color-accent-soft: var(--color-workplace-hoteru-soft); }
+[data-workplace="shokudo"] { --color-accent: var(--color-workplace-shokudo); --color-accent-soft: var(--color-workplace-shokudo-soft); }
+[data-workplace="kuko"]    { --color-accent: var(--color-workplace-kuko);    --color-accent-soft: var(--color-workplace-kuko-soft); }
+
+/* ── 3. Tailwind v4 테마 등록 ─────────────────────────────────────────────
+   @theme inline: 값이 var()라서 테마/직장 전환이 런타임에 반영된다. */
+@theme inline {
+  /* 색: bg-*, text-*, border-*, ring-*, fill-* */
+  --color-surface: var(--color-surface);
+  --color-surface-raised: var(--color-surface-raised);
+  --color-surface-sunken: var(--color-surface-sunken);
+  --color-ink: var(--color-ink);
+  --color-ink-muted: var(--color-ink-muted);
+  --color-ink-faint: var(--color-ink-faint);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-shell: var(--color-shell);
+  --color-shell-raised: var(--color-shell-raised);
+  --color-shell-ink: var(--color-shell-ink);
+  --color-shell-muted: var(--color-shell-muted);
+  --color-shell-border: var(--color-shell-border);
+  --color-brand: var(--color-brand);
+  --color-brand-strong: var(--color-brand-strong);
+  --color-brand-soft: var(--color-brand-soft);
+  --color-brand-ink: var(--color-brand-ink);
+  --color-accent: var(--color-accent);
+  --color-accent-soft: var(--color-accent-soft);
+  --color-workplace-konbini: var(--color-workplace-konbini);
+  --color-workplace-konbini-soft: var(--color-workplace-konbini-soft);
+  --color-workplace-hoteru: var(--color-workplace-hoteru);
+  --color-workplace-hoteru-soft: var(--color-workplace-hoteru-soft);
+  --color-workplace-shokudo: var(--color-workplace-shokudo);
+  --color-workplace-shokudo-soft: var(--color-workplace-shokudo-soft);
+  --color-workplace-kuko: var(--color-workplace-kuko);
+  --color-workplace-kuko-soft: var(--color-workplace-kuko-soft);
+  --color-irritation: var(--color-irritation);
+  --color-irritation-soft: var(--color-irritation-soft);
+  --color-irritation-ink: var(--color-irritation-ink);
+  --color-perfect: var(--color-perfect);
+  --color-perfect-soft: var(--color-perfect-soft);
+  --color-perfect-ink: var(--color-perfect-ink);
+  --color-tip: var(--color-tip);
+  --color-tip-soft: var(--color-tip-soft);
+  --color-combo: var(--color-combo);
+  --color-combo-soft: var(--color-combo-soft);
+  --color-register-glow: var(--color-register-glow);
+  --color-scene-counter: var(--color-scene-counter);
+  --color-scene-counter-edge: var(--color-scene-counter-edge);
+  --color-scene-skin: var(--color-scene-skin);
+
+  /* 그림자: shadow-* */
+  --shadow-hairline: var(--shadow-hairline);
+  --shadow-hairline-up: var(--shadow-hairline-up);
+  --shadow-panel-up: var(--shadow-panel-up);
+  --shadow-press: var(--shadow-press);
+  --shadow-press-lg: var(--shadow-press-lg);
+  --shadow-receipt: var(--shadow-receipt);
+  --shadow-focus: var(--shadow-focus);
+}
+
+@theme {
+  /* 폰트: font-jp, font-ko, font-num */
+  --font-jp: var(--font-mplus), var(--font-noto-kr), system-ui, sans-serif;
+  --font-ko: var(--font-noto-kr), var(--font-mplus), system-ui, sans-serif;
+  --font-num: var(--font-mplus), ui-monospace, monospace;
+
+  /* 타입 스케일: text-phrase-xl … (size + line-height + weight) */
+  --text-phrase-xl: 30px;   --text-phrase-xl--line-height: 34px; --text-phrase-xl--font-weight: 800;
+  --text-phrase-lg: 20px;   --text-phrase-lg--line-height: 26px; --text-phrase-lg--font-weight: 800;
+  --text-pos-option: 15px;  --text-pos-option--line-height: 20px; --text-pos-option--font-weight: 700;
+  --text-bubble: 14px;      --text-bubble--line-height: 19px;     --text-bubble--font-weight: 700;
+  --text-title: 26px;       --text-title--line-height: 30px;      --text-title--font-weight: 800;
+  --text-heading: 17px;     --text-heading--line-height: 22px;    --text-heading--font-weight: 800;
+  --text-body: 14px;        --text-body--line-height: 20px;       --text-body--font-weight: 500;
+  --text-caption: 12px;     --text-caption--line-height: 16px;    --text-caption--font-weight: 500;
+  --text-label: 11px;       --text-label--line-height: 14px;      --text-label--font-weight: 700; --text-label--letter-spacing: 0.06em;
+  --text-micro: 10.5px;     --text-micro--line-height: 14px;      --text-micro--font-weight: 500;
+  --text-money-xl: 30px;    --text-money-xl--line-height: 34px;   --text-money-xl--font-weight: 800; --text-money-xl--letter-spacing: 0.01em;
+  --text-money-lg: 22px;    --text-money-lg--line-height: 24px;   --text-money-lg--font-weight: 800;
+  --text-money: 16px;       --text-money--line-height: 20px;      --text-money--font-weight: 800; --text-money--letter-spacing: 0.02em;
+  --text-register: 14px;    --text-register--line-height: 18px;   --text-register--font-weight: 800;
+
+  /* 간격: Tailwind 기본 4px 스케일을 그대로 쓴다(p-4 = 16px). 이름 붙인 추가 스텝만 등록 */
+  --spacing: 4px;
+  --spacing-screen: 20px;      /* px-screen  화면 좌우 인셋 */
+  --spacing-shell: 24px;       /* px-shell   셸 화면 좌우 인셋 */
+  --spacing-safe-top: 54px;    /* pt-safe-top 상태바 아래 */
+  --spacing-safe-tab: 28px;    /* pb-safe-tab 탭바 하단 */
+  --spacing-safe-cta: 36px;    /* pb-safe-cta CTA 하단 */
+
+  /* 크기: h-touch, size-avatar … */
+  --spacing-touch: 44px;
+  --spacing-pos-button: 64px;
+  --spacing-cta: 52px;
+  --spacing-chip: 36px;
+  --spacing-chip-sm: 32px;
+  --spacing-icon-sm: 16px;
+  --spacing-icon: 22px;
+  --spacing-icon-lg: 30px;
+  --spacing-avatar-sm: 40px;
+  --spacing-avatar: 44px;
+  --spacing-avatar-lg: 56px;
+  --spacing-avatar-scene: 74px;
+  --spacing-screen-w: 390px;
+  --spacing-screen-h: 844px;
+
+  /* 라디우스: rounded-xs … rounded-pill */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-2xl: 16px;
+  --radius-3xl: 18px;
+  --radius-4xl: 20px;
+  --radius-panel: 28px;
+  --radius-screen: 40px;
+  --radius-pill: 999px;
+}
+
+/* ── 4. 기본값 ─────────────────────────────────────────────────────────── */
+@layer base {
+  html { font-family: var(--font-jp); color: var(--color-ink); background: var(--color-surface); }
+  button, a { min-height: var(--spacing-touch); }
+  :focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+}
