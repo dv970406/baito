@@ -5,6 +5,7 @@
  * 선택지는 퀴즈 카드가 아니라 계산대 버튼이다. 피드백은 "정답/오답" 글자가 아니라 손님 리액션과 속도 등급.
  */
 import type { AnswerOption, ShiftPhase } from "@/engine/types";
+import type { SpeechUiState } from "./ShiftBoard";
 import { Chip, Icon, PosButton, RegisterDisplay, TimerRing, type PosButtonState } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
@@ -26,6 +27,13 @@ export interface PosPanelProps {
   showKo: boolean;
   onToggleKo: () => void;
   onAnswer: (phraseId: string) => void;
+  /** 말하기 버튼 상태: hidden(미지원) · locked(해금 전) · ready · listening */
+  speech?: SpeechUiState;
+  /** 듣는 중 중간 인식 텍스트 */
+  interim?: string;
+  /** 인식 실패 안내(벌점 없음) */
+  speechNote?: string | null;
+  onSpeak?: () => void;
   className?: string;
 }
 
@@ -50,6 +58,10 @@ export function PosPanel({
   showKo,
   onToggleKo,
   onAnswer,
+  speech = "locked",
+  interim = "",
+  speechNote = null,
+  onSpeak,
   className,
 }: PosPanelProps) {
   const answering = phase === "question";
@@ -104,19 +116,82 @@ export function PosPanel({
         )}
       </div>
 
-      <div className="mt-auto flex items-center justify-between gap-2.5">
-        <span
-          aria-disabled="true"
-          title="선배 승급 시 해금"
-          className="inline-flex min-h-touch items-center gap-2 rounded-pill border-[1.5px] border-dashed border-border-strong bg-surface px-3.5 font-ko text-[13px] font-bold text-ink-muted"
-        >
-          <Icon name="mic" size={16} />
-          말하기 · 선배부터
-        </span>
-        <Chip selected={showKo} onClick={onToggleKo} aria-label="선택지 한국어 뜻 표시">
-          뜻
-        </Chip>
+      <div className="mt-auto flex flex-col gap-1.5">
+        {speechNote ? (
+          <p role="status" className="m-0 font-ko text-caption text-ink-muted">
+            {speechNote}
+          </p>
+        ) : null}
+        <div className="flex items-center justify-between gap-2.5">
+          <SpeakButton state={speech} interim={interim} disabled={!answering} onSpeak={onSpeak} />
+          <Chip selected={showKo} onClick={onToggleKo} aria-label="선택지 한국어 뜻 표시">
+            뜻
+          </Chip>
+        </div>
       </div>
     </section>
+  );
+}
+
+interface SpeakButtonProps {
+  state: SpeechUiState;
+  interim: string;
+  disabled: boolean;
+  onSpeak?: () => void;
+}
+
+/**
+ * 말하기 버튼. 미지원 브라우저면 자리만 비우고(레이아웃 유지), 해금 전엔 점선 알약,
+ * 준비되면 accent 알약, 듣는 중엔 펄스 점 + 중간 인식 텍스트.
+ */
+function SpeakButton({ state, interim, disabled, onSpeak }: SpeakButtonProps) {
+  if (state === "hidden") return <span aria-hidden="true" />;
+  if (state === "locked") {
+    return (
+      <span
+        aria-disabled="true"
+        title="선배 승급 시 전 시프트에서 해금 · 夕 시프트에선 바로"
+        className="inline-flex min-h-touch items-center gap-2 rounded-pill border-[1.5px] border-dashed border-border-strong bg-surface px-3.5 font-ko text-[13px] font-bold text-ink-muted"
+      >
+        <Icon name="mic" size={16} />
+        말하기 · 선배부터
+      </span>
+    );
+  }
+  const listening = state === "listening";
+  return (
+    <button
+      type="button"
+      onClick={onSpeak}
+      disabled={disabled && !listening}
+      aria-pressed={listening}
+      aria-label={listening ? "듣는 중" : "말하기 · 음성으로 답하기"}
+      className={cn(
+        "inline-flex min-h-touch max-w-[70%] items-center gap-2 rounded-pill px-3.5 font-ko text-[13px] font-bold transition-colors",
+        listening ? "bg-accent text-brand-ink" : "bg-accent-soft text-accent",
+        "disabled:opacity-50",
+      )}
+    >
+      {listening ? (
+        <span aria-hidden="true" className="inline-block size-2.5 animate-pulse rounded-full bg-brand-ink motion-reduce:animate-none" />
+      ) : (
+        <Icon name="mic" size={16} />
+      )}
+      {listening ? (
+        <span className="truncate">
+          <span lang="ja" className="font-jp">
+            聞いてます…
+          </span>
+          {interim ? <span lang="ja" className="ml-1.5 font-jp font-medium opacity-80">{interim}</span> : null}
+        </span>
+      ) : (
+        <span>
+          <span lang="ja" className="font-jp">
+            話す
+          </span>{" "}
+          · 말하기
+        </span>
+      )}
+    </button>
   );
 }

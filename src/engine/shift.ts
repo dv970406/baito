@@ -90,6 +90,7 @@ export function createShift(opts: CreateShiftOptions): ShiftState {
     afterReply: "advance",
     combo: 0,
     maxCombo: 0,
+    spokens: 0,
     perfects: 0,
     goods: 0,
     oks: 0,
@@ -289,7 +290,13 @@ function pushUnique(tags: ItemTag[], tag: ItemTag | undefined): ItemTag[] {
   return [...tags, tag];
 }
 
-function applyCorrect(state: ShiftState, step: QuestionStep, chosenPhraseId: string, content: WorkplaceContent): ShiftState {
+function applyCorrect(
+  state: ShiftState,
+  step: QuestionStep,
+  chosenPhraseId: string,
+  content: WorkplaceContent,
+  spoken = false,
+): ShiftState {
   const reactionMs = state.elapsedMs - state.questionStartedAt;
   const grade = gradeSpeed(reactionMs, state.config.questionTimeSec * 1000);
   const attempt = state.wrongOnStep + 1;
@@ -306,10 +313,12 @@ function applyCorrect(state: ShiftState, step: QuestionStep, chosenPhraseId: str
     reactionMs,
     timedOut: false,
     attempt,
+    spoken,
   };
 
   return {
     ...state,
+    spokens: state.spokens + (spoken ? 1 : 0),
     perfects: state.perfects + (grade === "perfect" ? 1 : 0),
     goods: state.goods + (grade === "good" ? 1 : 0),
     oks: state.oks + (grade === "ok" ? 1 : 0),
@@ -338,6 +347,7 @@ function applyWrong(
   chosenPhraseId: string | null,
   timedOut: boolean,
   content: WorkplaceContent,
+  spoken = false,
 ): ShiftState {
   const customer = state.customer;
   if (!customer) return state;
@@ -356,6 +366,7 @@ function applyWrong(
     reactionMs,
     timedOut,
     attempt,
+    spoken,
   };
 
   const base: ShiftState = {
@@ -432,12 +443,12 @@ function onTick(state: ShiftState, dtMs: number, content: WorkplaceContent): Shi
   return next;
 }
 
-function onAnswer(state: ShiftState, phraseId: string, content: WorkplaceContent): ShiftState {
+function onAnswer(state: ShiftState, phraseId: string, content: WorkplaceContent, spoken = false): ShiftState {
   if (!state.started || state.phase !== "question") return state;
   const step = currentStep(state);
   if (!step) return state;
-  if (phraseId === step.correctPhraseId) return applyCorrect(state, step, phraseId, content);
-  return applyWrong(state, step, phraseId, false, content);
+  if (phraseId === step.correctPhraseId) return applyCorrect(state, step, phraseId, content, spoken);
+  return applyWrong(state, step, phraseId, false, content, spoken);
 }
 
 function onSkipPhase(state: ShiftState, content: WorkplaceContent): ShiftState {
@@ -454,7 +465,7 @@ export function shiftReducer(state: ShiftState, event: ShiftEvent, content: Work
     case "TICK":
       return onTick(state, event.dtMs, content);
     case "ANSWER":
-      return onAnswer(state, event.phraseId, content);
+      return onAnswer(state, event.phraseId, content, event.spoken ?? false);
     case "SKIP_PHASE":
       return onSkipPhase(state, content);
   }
@@ -534,6 +545,7 @@ export function summarize(state: ShiftState, ctx: SummarizeContext): ShiftSummar
     wrongs: state.wrongs,
     missed: state.missed,
     maxCombo: state.maxCombo,
+    spokens: state.spokens,
     firstSuccessTags,
   });
   return {
@@ -551,6 +563,7 @@ export function summarize(state: ShiftState, ctx: SummarizeContext): ShiftSummar
     lates: state.lates,
     wrongs: state.wrongs,
     maxCombo: state.maxCombo,
+    spokens: state.spokens,
     hardest: hardestPhrase(state.log),
     wageDelta,
     wageAfter: Math.max(WAGE_FLOOR, ctx.wageBefore + wageDelta),

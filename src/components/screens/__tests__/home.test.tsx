@@ -56,6 +56,7 @@ function fakeSession(slot: ShiftSummary["slot"], extra: Partial<ShiftSummary> = 
     lates: 1,
     wrongs: 0,
     maxCombo: 9,
+    spokens: 0,
     hardest: null,
     wageDelta: 40,
     wageAfter: 1040,
@@ -158,7 +159,7 @@ describe("HomeScreen · 복원 후", () => {
     expect(regularsLink.textContent).toContain("/ 12");
     expect(screen.getByText(/다음 직급/).textContent).toContain("先輩");
     expect(screen.getByRole("progressbar", { name: "다음 직급까지 진행" })).toBeTruthy();
-    expect(screen.getByText("선배부터")).toBeTruthy();
+    expect(screen.getByText(/선배부터 전 시프트|음성 인식을 지원하지 않아요/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "직장 바꾸기 · BAITO 이력서" }).getAttribute("href")).toBe("/");
   });
 });

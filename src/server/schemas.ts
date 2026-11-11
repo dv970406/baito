@@ -79,6 +79,8 @@ const answerLogSchema = z
     reactionMs: z.number().min(0),
     timedOut: z.boolean(),
     attempt: z.number().int().min(1),
+    // 말하기 모드 이전 저장분과 호환되도록 기본값
+    spoken: z.boolean().default(false),
   })
   .strict();
 
@@ -107,6 +109,7 @@ export const shiftSummarySchema = z
     lates: count,
     wrongs: count,
     maxCombo: count,
+    spokens: count.default(0),
     hardest: hardestPhraseSchema.nullable(),
     wageDelta: z.number().int().min(-99_999).max(99_999),
     wageAfter: z.number().int().min(0).max(99_999),

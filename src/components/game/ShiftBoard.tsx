@@ -11,6 +11,7 @@ import type { CustomerReply, ItemTag, Regular, ShiftSlot, ShiftState, ShiftSumma
 import { currentKind, questionRemainingMs, shiftProgress, summarize } from "@/engine/shift";
 import { PATIENCE_MAX } from "@/engine/scoring";
 import { playSfx, speakJa, stopSpeaking, unlockAudio } from "@/lib/audio";
+import { isSpeechRecognitionSupported, listenOnce, matchSpoken, type ListenSession } from "@/lib/speech";
 import { Screen } from "@/components/ui";
 import { useGameStore } from "@/store/gameStore";
 import { pushShiftResult } from "@/store/sync";
@@ -34,7 +35,21 @@ export interface ShiftBoardProps {
   seed: number;
   regularsAvailable: Regular[];
   unlockedTags: ItemTag[];
+  /** 말하기 모드 해금 여부(직급·레벨). 브라우저 지원 여부는 보드가 따로 본다 */
+  speakingUnlocked?: boolean;
 }
+
+/** 말하기 버튼 상태 */
+export type SpeechUiState = "hidden" | "locked" | "ready" | "listening";
+
+/** 음성 인식이 이 시간 안에 끝나지 않으면 버튼으로 돌아간다(ms) */
+const LISTEN_TIMEOUT_MS = 6000;
+
+const SPEECH_NOTE: Record<string, string> = {
+  "not-allowed": "마이크 권한이 필요해요 · 버튼으로 골라 주세요",
+  ambiguous: "もう一度 · 어느 쪽인지 애매해요, 버튼으로 골라도 돼요",
+  default: "もう一度 · 못 알아들었어요, 버튼으로 골라도 돼요",
+};
 
 /** 마감 오버레이가 보이는 시간(ms). 점장 호출은 한마디를 읽을 시간을 더 준다 */
 const END_DELAY_MS = { normal: 1400, manager: 2800 } as const;
@@ -73,7 +88,14 @@ function readShowKo(): boolean {
   }
 }
 
-export function ShiftBoard({ content, slot, seed, regularsAvailable, unlockedTags }: ShiftBoardProps) {
+export function ShiftBoard({
+  content,
+  slot,
+  seed,
+  regularsAvailable,
+  unlockedTags,
+  speakingUnlocked = false,
+}: ShiftBoardProps) {
   const router = useRouter();
   const config = content.shifts[slot];
   const audioEnabled = useGameStore((s) => s.audioEnabled);
@@ -96,6 +118,16 @@ export function ShiftBoard({ content, slot, seed, regularsAvailable, unlockedTag
   const [showKo, setShowKo] = useState<boolean>(() => (typeof window === "undefined" ? false : readShowKo()));
   const [manualPaused, setManualPaused] = useState(false);
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
+
+  /* ───────── 말하기 모드 ───────── */
+  // 복원 뒤 클라이언트에서만 마운트되므로 지원 여부를 바로 읽는다
+  const [speechSupported] = useState(() => isSpeechRecognitionSupported());
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState("");
+  const [speechNote, setSpeechNote] = useState<string | null>(null);
+  const listenRef = useRef<ListenSession | null>(null);
+  // 방금 답이 음성으로 들어왔으면 TTS 로 다시 읽지 않는다(플레이어가 이미 말했다)
+  const spokenAnswerRef = useRef(false);
 
   const toggleKo = useCallback(() => {
     setShowKo((prev) => {
@@ -160,15 +192,19 @@ export function ShiftBoard({ content, slot, seed, regularsAvailable, unlockedTag
       } else {
         sfx("wrong");
       }
-      if (chosen && audioEnabled) speakJa(chosen.ja, { voice: "clerk" });
+      if (chosen && audioEnabled && !spokenAnswerRef.current) speakJa(chosen.ja, { voice: "clerk" });
+      spokenAnswerRef.current = false;
     }
 
     // 손님 반응
     if (state.mood === "gone" && prev.mood !== "gone") sfx("leave");
     if (state.phase === "leave" && prev.phase !== "leave" && state.mood === "happy") sfx("scan");
 
-    // 질문이 (다시) 열리면 눌린 버튼 표시를 지운다
-    if (state.phase === "question" && prev.phase !== "question") setPressedId(null);
+    // 질문이 (다시) 열리면 눌린 버튼 표시와 말하기 안내를 지운다
+    if (state.phase === "question" && prev.phase !== "question") {
+      setPressedId(null);
+      setSpeechNote(null);
+    }
   }, [state, audioEnabled, content.regulars, seed]);
 
   /* ───────── 입력 ───────── */
@@ -186,12 +222,59 @@ export function ShiftBoard({ content, slot, seed, regularsAvailable, unlockedTag
     [answer, state.phase],
   );
 
+  // 음성 결과가 돌아왔을 때 "사용자가 직접 멈춘 상태"인지 보기 위한 최신값
+  const manualPausedRef = useRef(false);
+  useEffect(() => {
+    manualPausedRef.current = manualPaused;
+  }, [manualPaused]);
+
+  /** 마이크 버튼: 듣는 동안 시계를 멈추고(오버레이 없음), 결과를 선택지와 너그럽게 맞춘다 */
+  const speak = useCallback(() => {
+    if (state.phase !== "question" || listening || !speechSupported || !speakingUnlocked) return;
+    unlockAudio();
+    stopSpeaking();
+    setSpeechNote(null);
+    setInterim("");
+    setListening(true);
+    setPaused(true);
+    const options = state.options.map((o) => ({ phraseId: o.phraseId, ja: o.ja }));
+    const session = listenOnce({ onInterim: setInterim, timeoutMs: LISTEN_TIMEOUT_MS });
+    listenRef.current = session;
+    void session.result.then((res) => {
+      if (listenRef.current !== session) return; // 취소됐거나 다른 세션으로 바뀜
+      listenRef.current = null;
+      setListening(false);
+      setInterim("");
+      if (!manualPausedRef.current) setPaused(false);
+      if (res.error === "aborted") return;
+      const match = res.transcripts.length > 0 ? matchSpoken(res.transcripts, options) : null;
+      if (match) {
+        spokenAnswerRef.current = true;
+        setPressedId(match.phraseId);
+        answer(match.phraseId, true);
+        return;
+      }
+      const key = res.error === "not-allowed" ? "not-allowed" : res.transcripts.length > 0 ? "ambiguous" : "default";
+      setSpeechNote(SPEECH_NOTE[key] ?? SPEECH_NOTE.default);
+    });
+  }, [answer, listening, setPaused, speakingUnlocked, speechSupported, state.options, state.phase]);
+
+  const cancelListening = useCallback(() => {
+    const session = listenRef.current;
+    if (!session) return;
+    listenRef.current = null;
+    session.cancel();
+    setListening(false);
+    setInterim("");
+  }, []);
+
   const pause = useCallback(() => {
     if (!started || state.phase === "done") return;
+    cancelListening();
     setManualPaused(true);
     setPaused(true);
     stopSpeaking();
-  }, [setPaused, started, state.phase]);
+  }, [cancelListening, setPaused, started, state.phase]);
   const resume = useCallback(() => {
     setManualPaused(false);
     setPaused(false);
@@ -202,9 +285,21 @@ export function ShiftBoard({ content, slot, seed, regularsAvailable, unlockedTag
   }, [manualPaused, paused, setPaused]);
 
   const quit = useCallback(() => {
+    cancelListening();
     stopSpeaking();
     router.push(HOME_PATH);
-  }, [router]);
+  }, [cancelListening, router]);
+
+  // 언마운트 시 듣기 중단
+  useEffect(() => () => listenRef.current?.cancel(), []);
+
+  const speechUi: SpeechUiState = !speechSupported
+    ? "hidden"
+    : !speakingUnlocked
+      ? "locked"
+      : listening
+        ? "listening"
+        : "ready";
 
   /* ───────── 마감 ───────── */
   const completedRef = useRef(false);
@@ -300,6 +395,10 @@ export function ShiftBoard({ content, slot, seed, regularsAvailable, unlockedTag
         showKo={showKo}
         onToggleKo={toggleKo}
         onAnswer={handleAnswer}
+        speech={speechUi}
+        interim={interim}
+        speechNote={speechNote}
+        onSpeak={speak}
       />
 
       {!started ? <PreShiftSheet content={content} config={config} ready onStart={handleStart} /> : null}

@@ -29,8 +29,10 @@ import {
   type ShiftSlot,
   type ShiftSummary,
 } from "@/engine/types";
+import { isSpeakingUnlocked } from "@/components/game/shiftModel";
 import { cn } from "@/lib/cn";
 import { formatDateJa } from "@/lib/format";
+import { isSpeechRecognitionSupported } from "@/lib/speech";
 import { localYmd } from "@/store/date";
 import { useGameStore } from "@/store/gameStore";
 import {
@@ -268,9 +270,15 @@ export function HomeScreen() {
       })
     : null;
 
-  const senpaiIdx = konbiniRanks.findIndex((r) => r.id === "senpai");
-  const rankIdx = konbiniRanks.findIndex((r) => r.id === rank.current.id);
-  const speakingLocked = rankIdx < senpaiIdx;
+  // 말하기 모드: 선배부터 전 시프트, 夕(레벨 3) 시프트는 직급과 무관하게. 브라우저 지원은 복원 뒤에만 판단
+  const speakingAll = ready && isSpeakingUnlocked(profile, konbiniShifts.asa, konbiniRanks);
+  const speakingSupported = ready ? isSpeechRecognitionSupported() : true;
+  const speakingLocked = !speakingAll;
+  const speakingCaption = !speakingSupported
+    ? "이 브라우저는 음성 인식을 지원하지 않아요"
+    : speakingAll
+      ? "레지의 마이크 버튼으로 말해서 답하면 시급이 더 올라요"
+      : "선배부터 전 시프트 · 夕 시프트에선 지금도 열려요";
 
   const rowState = (slot: ShiftSlot): ShiftRowState => {
     if (!ready) return "pending";
@@ -490,23 +498,28 @@ export function HomeScreen() {
           </Card>
 
           <Card
-            variant="sunken"
-            dashed
+            variant={speakingLocked ? "sunken" : "raised"}
+            dashed={speakingLocked}
             padding="md"
-            aria-disabled="true"
+            aria-disabled={speakingLocked ? "true" : undefined}
             data-locked={speakingLocked}
           >
             <div className="flex items-center gap-3.5">
-              <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg bg-border text-ink-muted">
+              <span
+                className={cn(
+                  "inline-flex size-11 shrink-0 items-center justify-center rounded-lg",
+                  speakingLocked ? "bg-border text-ink-muted" : "bg-accent-soft text-accent",
+                )}
+              >
                 <Icon name="mic" size={22} />
               </span>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="font-jp text-pos-option text-ink-muted">
+                <span className={cn("font-jp text-pos-option", speakingLocked ? "text-ink-muted" : "text-ink")}>
                   <span lang="ja">話す</span> · 말하기 모드
                 </span>
                 <span className="inline-flex items-center gap-1 text-caption text-ink-muted">
-                  <Icon name="lock" size={14} />
-                  {speakingLocked ? "선배부터" : "준비 중"}
+                  {speakingLocked ? <Icon name="lock" size={14} /> : null}
+                  {speakingCaption}
                 </span>
               </div>
             </div>

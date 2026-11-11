@@ -24,6 +24,8 @@ describe("computeWageDelta", () => {
     );
     expect(computeWageDelta({ ...zero, lates: 10 })).toBe(0);
     expect(computeWageDelta({ ...zero, firstSuccessTags: ["hot"] })).toBe(40);
+    // 말하기 모드 보너스: 1회당 +3, 생략하면 0
+    expect(computeWageDelta({ ...zero, spokens: 2 })).toBe(6);
   });
 
   it("[-80, 160] 클램프", () => {

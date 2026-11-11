@@ -17,8 +17,13 @@ export interface WageStats {
   wrongs: number;
   missed: number;
   maxCombo: number;
+  /** 말하기 모드로 맞힌 수 (없으면 0) */
+  spokens?: number;
   firstSuccessTags: ItemTag[];
 }
+
+/** 말하기 모드로 맞힌 응대 1회당 추가 시급(¥) — 버튼보다 더 오른다 */
+export const SPOKEN_BONUS = 3;
 
 /** 시급 하한(¥) */
 export const WAGE_FLOOR = 900;
@@ -28,7 +33,7 @@ export const WAGE_DELTA_MAX = 160;
 
 /**
  * 시프트 결과 → 시급 변동(¥).
- * perfects×4 + goods×2 + oks×1 + maxCombo×2 − wrongs×1 − missed×25 + firstSuccessTags×40, [-80, 160] 로 클램프.
+ * perfects×4 + goods×2 + oks×1 + maxCombo×2 + spokens×3 − wrongs×1 − missed×25 + firstSuccessTags×40, [-80, 160] 로 클램프.
  * (late 는 정답이지만 보너스 없음)
  */
 export function computeWageDelta(s: WageStats): number {
@@ -36,7 +41,8 @@ export function computeWageDelta(s: WageStats): number {
     s.perfects * 4 +
     s.goods * 2 +
     s.oks * 1 +
-    s.maxCombo * 2 -
+    s.maxCombo * 2 +
+    (s.spokens ?? 0) * SPOKEN_BONUS -
     s.wrongs * 1 -
     s.missed * 25 +
     s.firstSuccessTags.length * 40;

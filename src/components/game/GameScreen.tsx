@@ -16,7 +16,7 @@ import { localYmd } from "@/store/date";
 import { selectAvailableSlots, selectUnlockedTags } from "@/store/selectors";
 import { ShiftBoard } from "./ShiftBoard";
 import { PreShiftSheet } from "./ShiftOverlays";
-import { availableRegulars } from "./shiftModel";
+import { availableRegulars, isSpeakingUnlocked } from "./shiftModel";
 
 export interface GameScreenProps {
   slot: ShiftSlot;
@@ -30,6 +30,8 @@ interface Boot {
   available: ShiftSlot[];
   regulars: Regular[];
   unlockedTags: ItemTag[];
+  /** 말하기 모드(음성 인식) 해금 여부 */
+  speakingUnlocked: boolean;
 }
 
 const SLOT_KO: Record<ShiftSlot, string> = { asa: "아침", hiru: "점심", yoru: "저녁" };
@@ -69,6 +71,7 @@ function HydratedGame({ slot, seedOverride }: GameScreenProps) {
       available: selectAvailableSlots(profile, localYmd(now)),
       regulars: availableRegulars(konbini, profile, slot, now.getMonth() + 1),
       unlockedTags: selectUnlockedTags(profile, konbini.ranks),
+      speakingUnlocked: isSpeakingUnlocked(profile, konbini.shifts[slot], konbini.ranks),
     };
   });
 
@@ -102,6 +105,7 @@ function HydratedGame({ slot, seedOverride }: GameScreenProps) {
       seed={boot.seed}
       regularsAvailable={boot.regulars}
       unlockedTags={boot.unlockedTags}
+      speakingUnlocked={boot.speakingUnlocked}
     />
   );
 }

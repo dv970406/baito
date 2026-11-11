@@ -9,8 +9,11 @@ import type {
   CustomerSpec,
   ItemTag,
   PaymentMethod,
+  RankDef,
+  RankId,
   Regular,
   RegularVisual,
+  ShiftConfig,
   ShiftSlot,
   ShiftSummary,
   SpeedGrade,
@@ -23,6 +26,20 @@ import type { IconName } from "@/components/ui";
 
 /** 마감 직후 영수증 화면이 스토어 재렌더 전에도 읽을 수 있도록 두는 sessionStorage 키 */
 export const LAST_RECEIPT_KEY = "baito.lastReceipt";
+
+/** 말하기 모드가 전 시프트에서 열리는 직급 */
+export const SPEAKING_RANK: RankId = "senpai";
+/** 이 레벨 이상의 시프트에서는 직급과 무관하게 말하기 모드가 열린다(기획서: Lv3 부터) */
+export const SPEAKING_LEVEL = 3;
+
+/** 말하기 모드 해금 여부 — 선배 이상이거나, 레벨 3(夕) 시프트 */
+export function isSpeakingUnlocked(profile: PlayerProfile, config: ShiftConfig, ranks: RankDef[]): boolean {
+  if (config.level >= SPEAKING_LEVEL) return true;
+  const current = rankFor(profile.totalShifts, ranks).current.id;
+  const idx = ranks.findIndex((r) => r.id === current);
+  const need = ranks.findIndex((r) => r.id === SPEAKING_RANK);
+  return idx >= 0 && need >= 0 && idx >= need;
+}
 /** 선택지 한국어 뜻 표시 여부 저장 키 */
 export const SHOW_KO_KEY = "baito.showKo";
 

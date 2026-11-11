@@ -35,6 +35,7 @@ DTO 정의는 `src/shared/api.ts`, `src/shared/player.ts`, `src/engine/types.ts`
 - **`PUT /api/profile` 은 last-write-wins.** 서버에 저장된 `profile.updatedAt` 이 요청의 것보다 새로우면 요청을 무시하고 저장된 프로필을 `200` 으로 돌려준다. 클라이언트는 응답 프로필을 로컬에 반영하면 된다. 같은 시각이면 요청이 이긴다.
 - **`POST /api/sessions` 는 프로필이 먼저 있어야 한다.** `shift_sessions.player_id` 가 `players` 를 참조하고, 서버가 임의의 기본 프로필을 만들면 클라이언트 로컬 상태와 어긋나기 때문에 자동 생성하지 않는다. `409 PROFILE_REQUIRED` 를 받으면 `PUT /api/profile` 후 재시도한다.
 - **`GET /api/league`** 는 현재 주(일본 시간 **월요일 00:00 ~ 다음 월요일 00:00**, `[start, end)`)의 `shift_sessions.played_at` 을 플레이어별로 합산해 `weeklyWageDelta` 내림차순 상위 30명을 돌려준다(동점: 시프트 수 → 현재 시급 → id). `weekStart` 는 그 월요일의 `YYYY-MM-DD`. `me` 는 호출자가 상위 30명 안에 있으면 그 항목(`isMe: true`), 아니면 `null`.
+- `ShiftSummary.spokens`(말하기 모드로 맞힌 수)와 `AnswerLog.spoken` 은 말하기 모드 이전 저장분과의 호환을 위해 생략 시 각각 `0`, `false` 로 채워진다.
 - 입력 스키마(`src/server/schemas.ts`)는 `.strict()` 라서 알 수 없는 필드가 있으면 400 이다. `name` 은 공백 제거 후 1~20자, `wage` 는 0~99999 정수, `answers` 는 최대 2000개.
 
 ## 인증 모델 — 익명 쿠키

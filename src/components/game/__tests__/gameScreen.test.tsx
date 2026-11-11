@@ -8,6 +8,8 @@ import { useGameStore, createDefaultProfile } from "@/store/gameStore";
 import { selectUnlockedTags } from "@/store/selectors";
 import { GameScreen } from "../GameScreen";
 import { availableRegulars, LAST_RECEIPT_KEY } from "../shiftModel";
+import type { SpeechRecognitionLike } from "@/lib/speech";
+import { localYmd } from "@/store/date";
 
 /* ───────────────────────── 목 ───────────────────────── */
 
@@ -262,5 +264,121 @@ describe("GameScreen — 마감", () => {
     expect(routerMock.replace).toHaveBeenCalledTimes(1);
     expect(routerMock.replace).toHaveBeenCalledWith("/konbini/receipt?latest=1");
     expect(screen.getByRole("dialog", { name: "마감" }).textContent).toContain("お疲れさまでした");
+  });
+});
+
+/* ───────────────────────── 말하기 모드 ───────────────────────── */
+
+type ResultEvent = Parameters<NonNullable<SpeechRecognitionLike["onresult"]>>[0];
+class FakeRecognition implements SpeechRecognitionLike {
+  static instances: FakeRecognition[] = [];
+  lang = "";
+  continuous = false;
+  interimResults = false;
+  maxAlternatives = 1;
+  onresult: ((e: ResultEvent) => void) | null = null;
+  onerror: ((e: { error: string }) => void) | null = null;
+  onend: (() => void) | null = null;
+  constructor() {
+    FakeRecognition.instances.push(this);
+  }
+  start() {}
+  stop() {}
+  abort() {}
+  emitFinal(transcripts: string[]) {
+    const result = Object.assign(
+      transcripts.map((t) => ({ transcript: t, confidence: 0.9 })),
+      { isFinal: true, length: transcripts.length },
+    );
+    this.onresult?.({ resultIndex: 0, results: Object.assign([result], { length: 1 }) });
+  }
+}
+const fakeWindow = window as unknown as { webkitSpeechRecognition?: unknown };
+
+/** 夕 시프트(레벨 3)는 직급과 무관하게 말하기 모드가 열린다 — 아침·점심을 끝낸 프로필로 연다 */
+function openYoru() {
+  const profile = createDefaultProfile();
+  profile.today = { date: localYmd(), completed: ["asa", "hiru"] };
+  useGameStore.setState({ profile });
+  render(<GameScreen slot="yoru" seedOverride={SEED} />);
+  fireEvent.click(screen.getByRole("button", { name: "出勤" }));
+}
+function mirrorYoru(): ShiftState {
+  const profile = useGameStore.getState().profile;
+  return createShift({
+    content: konbini,
+    config: konbini.shifts.yoru,
+    seed: SEED,
+    tagWeights: profile.tagWeights,
+    regularsAvailable: availableRegulars(konbini, profile, "yoru", new Date().getMonth() + 1),
+    unlockedTags: selectUnlockedTags(profile, konbini.ranks),
+  });
+}
+const remainingLabel = () => screen.getByRole("timer").getAttribute("aria-label");
+
+describe("GameScreen — 말하기 모드", () => {
+  afterEach(() => {
+    delete fakeWindow.webkitSpeechRecognition;
+    FakeRecognition.instances = [];
+  });
+
+  it("음성 인식 미지원 브라우저면 말하기 버튼이 아예 없다", () => {
+    clockIn();
+    advance(TIMING.ENTER_MS + 60);
+    expect(screen.queryByText(/말하기/)).toBeNull();
+  });
+
+  it("해금 전(新人 · 아침)엔 점선 '선배부터' 표시만", () => {
+    fakeWindow.webkitSpeechRecognition = FakeRecognition;
+    clockIn();
+    advance(TIMING.ENTER_MS + 60);
+    expect(screen.getByText(/말하기 · 선배부터/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /음성으로 답하기/ })).toBeNull();
+  });
+
+  it("夕 시프트: 마이크를 누르면 시계가 멈추고, 인식된 말이 정답이면 음성 답으로 처리된다(TTS 생략)", async () => {
+    fakeWindow.webkitSpeechRecognition = FakeRecognition;
+    openYoru();
+    advance(TIMING.ENTER_MS + 60);
+    const mirror = skip(start(mirrorYoru()));
+    expect(mirror.phase).toBe("question");
+    const correct = correctOf(mirror);
+
+    fireEvent.click(screen.getByRole("button", { name: "말하기 · 음성으로 답하기" }));
+    const listening = screen.getByRole("button", { name: "듣는 중" });
+    expect(listening.getAttribute("aria-pressed")).toBe("true");
+    const before = remainingLabel();
+    advance(2000);
+    expect(remainingLabel()).toBe(before); // 듣는 동안 질문 타이머 정지
+
+    const rec = FakeRecognition.instances[0];
+    expect(rec.lang).toBe("ja-JP");
+    await act(async () => {
+      rec.emitFinal([correct.ja.replace("？", "")]);
+    });
+
+    const target = optionButtons().find((b) => b.textContent === correct.ja);
+    expect(target?.dataset.state).toBe("correct");
+    expect(screen.getByText("PERFECT")).toBeTruthy();
+    expect(audioMock.playSfx).toHaveBeenCalledWith("perfect");
+    expect(audioMock.speakJa).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "듣는 중" })).toBeNull();
+  });
+
+  it("못 알아들으면 안내만 보이고 벌점 없이 버튼으로 이어서 답할 수 있다", async () => {
+    fakeWindow.webkitSpeechRecognition = FakeRecognition;
+    openYoru();
+    advance(TIMING.ENTER_MS + 60);
+    fireEvent.click(screen.getByRole("button", { name: "말하기 · 음성으로 답하기" }));
+    await act(async () => {
+      FakeRecognition.instances[0].onend?.();
+    });
+    expect(screen.getByText(/못 알아들었어요/)).toBeTruthy();
+    const buttons = optionButtons();
+    buttons.forEach((b) => {
+      expect(b.dataset.state).toBe("idle");
+      expect(b.disabled).toBe(false);
+    });
+    expect(audioMock.playSfx).not.toHaveBeenCalledWith("wrong");
   });
 });

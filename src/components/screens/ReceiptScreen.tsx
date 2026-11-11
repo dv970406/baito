@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import type { ShiftSummary } from "@/engine/types";
+import { SPOKEN_BONUS } from "@/engine/progression";
 import { konbini } from "@/content";
 import {
   Barcode,
@@ -169,6 +170,13 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
           <Grade label="Late" value={summary.lates} tone={summary.lates > 0 ? "combo" : undefined} />
         </dl>
         <StatRow label={<Label ja="最大コンボ" ko="최고 콤보" />} value={`×${summary.maxCombo}`} />
+        {summary.spokens > 0 ? (
+          <StatRow
+            label={<Label ja="声で答えた" ko="말로 답한 응대" />}
+            value={`${summary.spokens}회 · +¥${summary.spokens * SPOKEN_BONUS}`}
+            tone="perfect"
+          />
+        ) : null}
       </div>
       <DashedDivider />
 

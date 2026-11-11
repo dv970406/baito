@@ -302,6 +302,8 @@ export interface AnswerLog {
   timedOut: boolean;
   /** 이 질문에서 몇 번째 시도였는지 (1부터) */
   attempt: number;
+  /** 말하기 모드(음성 인식)로 답했는지 */
+  spoken: boolean;
 }
 
 export interface CustomerSpec {
@@ -365,6 +367,8 @@ export interface ShiftState {
   afterReply: "advance" | "retry";
   combo: number;
   maxCombo: number;
+  /** 말하기 모드로 맞힌 수 */
+  spokens: number;
   perfects: number;
   goods: number;
   oks: number;
@@ -388,7 +392,7 @@ export interface ShiftState {
 export type ShiftEvent =
   | { type: "START" }
   | { type: "TICK"; dtMs: number }
-  | { type: "ANSWER"; phraseId: string }
+  | { type: "ANSWER"; phraseId: string; spoken?: boolean }
   | { type: "SKIP_PHASE" };
 
 export interface HardestPhrase {
@@ -415,6 +419,8 @@ export interface ShiftSummary {
   lates: number;
   wrongs: number;
   maxCombo: number;
+  /** 말하기 모드로 맞힌 응대 수 (시급 보너스) */
+  spokens: number;
   hardest: HardestPhrase | null;
   /** 이 시프트로 변한 시급(¥) */
   wageDelta: number;

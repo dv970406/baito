@@ -50,9 +50,9 @@ export function useShift(opts: UseShiftOptions) {
   }, [dispatch, started]);
 
   const answer = useCallback(
-    (phraseId: string) => {
+    (phraseId: string, spoken = false) => {
       if (stateRef.current.phase !== "question") return;
-      dispatch({ type: "ANSWER", phraseId });
+      dispatch({ type: "ANSWER", phraseId, spoken });
     },
     [dispatch],
   );

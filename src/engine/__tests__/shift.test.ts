@@ -175,6 +175,21 @@ describe("ANSWER — 정답", () => {
     if (tag) expect(s.tagWeights[tag as "hot"]).toBeCloseTo(0.6);
   });
 
+  it("말하기 모드 정답: log.spoken · spokens 카운트 · 요약·시급 보너스", () => {
+    let s = toQuestion(make());
+    s = shiftReducer(tick(s, 500), { type: "ANSWER", phraseId: correctId(s), spoken: true }, CONTENT);
+    expect(s.log[0].spoken).toBe(true);
+    expect(s.spokens).toBe(1);
+    const summary = summarize(s, { workplaceId: "konbini", wageBefore: 1000, perfectedTags: [], playedAt: "2026-11-10T00:00:00.000Z" });
+    expect(summary.spokens).toBe(1);
+    // perfect 4 + combo 2 + spoken 3
+    expect(summary.wageDelta).toBe(4 + 2 + 3);
+    // 버튼 답(기본값)은 spoken=false
+    const plain = answer(tick(toQuestion(make()), 500), correctId(toQuestion(make())));
+    expect(plain.log[0].spoken).toBe(false);
+    expect(plain.spokens).toBe(0);
+  });
+
   it("속도 등급별 카운터", () => {
     const run = (ms: number) => {
       const s = toQuestion(make());

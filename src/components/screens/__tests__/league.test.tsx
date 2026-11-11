@@ -42,6 +42,7 @@ function session(playedAt: string, wageDelta: number): ShiftSummary {
     lates: 0,
     wrongs: 0,
     maxCombo: 8,
+    spokens: 0,
     hardest: null,
     wageDelta,
     wageAfter: 1000 + wageDelta,
