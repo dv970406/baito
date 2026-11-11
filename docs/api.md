@@ -73,8 +73,8 @@ DTO 정의는 `src/shared/api.ts`, `src/shared/player.ts`, `src/engine/types.ts`
 
 | 변수 | 어디서 얻나 | 비고 |
 | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase 대시보드 → **Project Settings → API → Project URL** (`https://<ref>.supabase.co`) | 공개돼도 되는 값 |
-| `SUPABASE_SERVICE_ROLE_KEY` | 같은 화면 → **Project API keys → `service_role`** (Reveal 클릭) | **서버 전용. RLS 를 우회한다.** 절대 `NEXT_PUBLIC_` 접두어를 붙이거나 클라이언트 코드에서 import 하지 않는다. Vercel 등 호스팅의 서버 환경변수로만 설정 |
+| `NEXT_PUBLIC_SUPABASE_URL` | 대시보드 상단 **Connect** 버튼 → Project URL, 또는 **Settings → API Keys** 상단 (`https://<ref>.supabase.co`) | 공개돼도 되는 값 |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Settings → API Keys → Secret keys** 에서 `sb_secret_…` 키 생성·복사(권장). **Legacy API Keys** 탭의 `service_role`(`eyJ…`) 도 2026년 말까지 동작 | **서버 전용. RLS 를 우회한다.** 절대 `NEXT_PUBLIC_` 접두어를 붙이거나 클라이언트 코드에서 import 하지 않는다. Vercel 등 호스팅의 서버 환경변수로만 설정 |
 | `BAITO_DATA_BACKEND` | 직접 지정 (`supabase` \| `memory`) | 비우면 위 규칙으로 자동 결정 |
 
 `anon` 키는 이 프로젝트에서 쓰지 않는다(클라이언트가 Supabase 에 직접 붙지 않는다).
