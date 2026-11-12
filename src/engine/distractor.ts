@@ -52,6 +52,23 @@ export function findCorrectPhrase(
   return content.phrases.find((phrase) => isCorrectFor(phrase, kind, customer) && phrase.level <= level);
 }
 
+/**
+ * 레벨과 무관하게 이 질문의 가장 쉬운(level 이 가장 낮은) 정답 문구.
+ * 단골의 고정 구매가 시프트 레벨보다 높은 질문을 부를 때(예: 아침의 다나카 담배) 쓴다.
+ */
+export function easiestCorrectPhrase(
+  kind: QuestionKind,
+  customer: CustomerSpec,
+  content: WorkplaceContent,
+): Phrase | undefined {
+  let best: Phrase | undefined;
+  for (const phrase of content.phrases) {
+    if (!isCorrectFor(phrase, kind, customer)) continue;
+    if (!best || phrase.level < best.level) best = phrase;
+  }
+  return best;
+}
+
 /** 이 질문의 정답 문구. 콘텐츠에 없으면 예외 — shift.ts 는 findCorrectPhrase 로 먼저 큐를 걸러낸다 */
 export function correctPhraseFor(
   kind: QuestionKind,

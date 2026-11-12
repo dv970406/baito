@@ -1,12 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="BAITO">
-  <!-- BAITO 앱 아이콘 — 흰 바탕 위 편의점 블루 네모 배지, 영수증 모티프. 색은 theme.css 토큰(blue-500 #2a6df4, neon-50 #f4f6f2, ink-900 #1a1d23) -->
+  <!-- BAITO 앱 아이콘 — 흰 바탕 위 편의점 블루 네모 배지 + 흰 「バ」(둥근 획). 좌표는 src/app/iconArt.tsx 의 BA_STROKES 와 같다 -->
   <rect width="512" height="512" rx="112" fill="#ffffff"/>
   <rect x="96" y="96" width="320" height="320" rx="72" fill="#2a6df4"/>
-  <!-- 영수증 종이 -->
-  <path d="M176 160h160v168l-16 14-16-14-16 14-16-14-16 14-16-14-16 14-16-14-16 14-16-14z" fill="#f4f6f2"/>
-  <!-- 영수증 줄 -->
-  <rect x="200" y="192" width="112" height="12" rx="6" fill="#1a1d23"/>
-  <rect x="200" y="222" width="80" height="10" rx="5" fill="#8a9099"/>
-  <rect x="200" y="246" width="96" height="10" rx="5" fill="#8a9099"/>
-  <rect x="200" y="278" width="112" height="14" rx="7" fill="#2a6df4"/>
+  <g fill="none" stroke="#ffffff" stroke-linecap="round">
+    <path d="M226 204 C214 268 188 318 146 358" stroke-width="40"/>
+    <path d="M284 206 C310 264 338 312 374 354" stroke-width="40"/>
+    <path d="M330 132 L346 172" stroke-width="26"/>
+    <path d="M372 120 L388 160" stroke-width="26"/>
+  </g>
 </svg>

@@ -15,7 +15,8 @@ export const konbiniShifts: Record<ShiftSlot, ShiftConfig> = {
     durationSec: 180,
     customerCount: 8,
     questionTimeSec: 6,
-    activeTags: ["hot", "chopsticks"],
+    // tobacco 는 직급 게이트 — 선배가 되어야 활성(아침 단골 다나카의 23번)
+    activeTags: ["hot", "chopsticks", "tobacco"],
     pointCardChance: 0,
     itemsPerCustomer: [1, 2],
     descriptionKo: "손님 느림 · 질문 1~2개",

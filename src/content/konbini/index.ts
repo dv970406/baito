@@ -1,5 +1,6 @@
 import type { WorkplaceContent } from "@/engine/types";
 import {
+  konbiniDrunkReplies,
   konbiniEventPrompts,
   konbiniListenRequests,
   konbiniListenTargets,
@@ -37,6 +38,7 @@ export const konbini: WorkplaceContent = {
   eventPrompts: konbiniEventPrompts,
   tobaccoRequests: konbiniTobaccoRequests,
   seasons: konbiniSeasons,
+  drunkReplies: konbiniDrunkReplies,
 };
 
 export { konbiniItems, konbiniPhrases, konbiniRegulars, konbiniManager, konbiniRanks, konbiniShifts };

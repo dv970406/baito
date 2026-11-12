@@ -174,12 +174,28 @@ describe("KONBINI 콘텐츠 린트", () => {
       for (const slot of SHIFT_SLOTS) {
         const config = shifts[slot];
         for (const tag of config.activeTags) {
-          const ok = yearRound.some(
-            (i) => i.level <= config.level && i.tags.includes(tag) && i.tags.every((t) => config.activeTags.includes(t)),
-          );
+          const fits = (i: (typeof items)[number]) =>
+            i.tags.includes(tag) && i.tags.every((t) => config.activeTags.includes(t));
+          // 레벨 안의 연중 상품이 있거나, 그 시간대 단골의 고정 구매로만 나오는 태그(아침 다나카의 담배)
+          const ok =
+            yearRound.some((i) => i.level <= config.level && fits(i)) ||
+            regulars.some((r) => r.slots.includes(slot) && r.purchase.some((id) => items.some((i) => i.id === id && fits(i))));
           expect(ok, `${slot}: ${tag}`).toBe(true);
         }
       }
+    });
+  });
+
+  describe("취객 대사", () => {
+    it("반응·당황·이탈이 모두 있고 ja 가 겹치지 않는다", () => {
+      const drunk = konbini.drunkReplies;
+      expect(drunk).toBeDefined();
+      expect(drunk!.reply.length).toBeGreaterThanOrEqual(6);
+      expect(drunk!.confused.length).toBeGreaterThanOrEqual(4);
+      expect(drunk!.leave.length).toBeGreaterThanOrEqual(3);
+      const all = [...drunk!.reply, ...drunk!.confused, ...drunk!.leave];
+      expect(duplicates(all.map((r) => r.ja))).toEqual([]);
+      for (const r of all) expect(r.ko.length).toBeGreaterThan(0);
     });
   });
 

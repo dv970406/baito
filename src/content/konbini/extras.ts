@@ -1,4 +1,4 @@
-import type { CustomerReply, EventKind, ListenTarget, ListenTargetLabel, Season } from "@/engine/types";
+import type { CustomerReply, DrunkReplies, EventKind, ListenTarget, ListenTargetLabel, Season } from "@/engine/types";
 
 /**
  * KONBINI 추가 콘텐츠 — 리스닝 단계 요구, 돌발 이벤트 첫마디, 담배 번호 요구, 시즌.
@@ -216,3 +216,34 @@ export const konbiniSeasons: Season[] = [
     rule: { kind: "bagSize" },
   },
 ];
+
+/**
+ * 취객(심야) 전용 대사 — 혀가 꼬이고 길게 늘어진다.
+ * 정답 뒤 반응은 절반쯤만 이 대사로 바뀌고(나머지는 원래 응답), 당황·이탈은 항상 이 대사.
+ */
+export const konbiniDrunkReplies: DrunkReplies = {
+  reply: [
+    { ja: "おぉ〜…それそれぇ", ko: "오오~… 그거 그거~" },
+    { ja: "いいよいいよぉ〜", ko: "좋아 좋아~" },
+    { ja: "にーちゃん、わかってるねぇ", ko: "형씨, 뭘 좀 아네~" },
+    { ja: "うぃ〜…たのむわ", ko: "으이~… 부탁해" },
+    { ja: "はいはい〜、それでぇ", ko: "네네~ 그걸로~" },
+    { ja: "んふふ、さいこぉ", ko: "흐흐, 최고~" },
+    { ja: "まかせたぁ〜", ko: "맡긴다~" },
+    { ja: "それなぁ〜…それ", ko: "그거지~… 그거" },
+  ],
+  confused: [
+    { ja: "あぁ？ なんてぇ？", ko: "어? 뭐라고~?" },
+    { ja: "ん〜？ もっかい言ってぇ", ko: "응~? 한 번 더 말해 줘~" },
+    { ja: "ちがうちがう〜、ちがうってぇ", ko: "아니 아니~ 아니라니까~" },
+    { ja: "へ？ おれ、なんか言ったっけ", ko: "에? 나 뭐라 했었나" },
+    { ja: "むずかしいこと言うなよぉ", ko: "어려운 말 하지 마~" },
+    { ja: "うぃっく…なに？", ko: "딸꾹… 뭐?" },
+  ],
+  leave: [
+    { ja: "もういいわ〜…よそで買うぅ", ko: "됐어~… 딴 데서 살래~" },
+    { ja: "なんだよぉ…帰るわ", ko: "뭐야~… 간다" },
+    { ja: "おれ、寝るぅ〜", ko: "나 잘래~" },
+    { ja: "つめてぇなぁ〜、この店", ko: "차갑네~ 이 가게" },
+  ],
+};

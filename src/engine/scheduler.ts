@@ -249,8 +249,10 @@ export function generateCustomer(ctx: GenerateContext): CustomerSpec {
   let payment: PaymentMethod;
 
   if (regular) {
+    // 단골의 고정 구매는 "외워지는 패턴"이라 레벨과 무관하다. 활성 태그(직급 해금 포함)와 시즌만 본다
+    const regularPool = eligibleItems(ctx.content.items, Number.POSITIVE_INFINITY, activeTags, ctx.month);
     items = regular.purchase
-      .map((id) => eligible.find((item) => item.id === id))
+      .map((id) => regularPool.find((item) => item.id === id))
       .filter((item): item is Item => item !== undefined);
     payment = regular.payment;
   } else {

@@ -9,7 +9,7 @@
  */
 import { resolveCart } from "./cartResolver";
 import { tagSetKey } from "./cartResolver";
-import { buildOptions, findCorrectPhrase, listenId, tobaccoPickId } from "./distractor";
+import { buildOptions, easiestCorrectPhrase, findCorrectPhrase, listenId, tobaccoPickId } from "./distractor";
 import { computeWageDelta, WAGE_FLOOR } from "./progression";
 import { createRng, hashSeed } from "./rng";
 import { applyAnswerToWeights, effectiveActiveTags, generateCustomer } from "./scheduler";
@@ -85,6 +85,18 @@ export function stepTag(step: Pick<QuestionStep, "kind" | "target">): ItemTag | 
 }
 
 /** 손님 말풍선 — 관광객이고 영어(en)가 있으면 영어로 */
+/** 취객의 정답 뒤 반응 중 혀 꼬인 대사로 바뀌는 비율(나머지는 원래 응답 — 무엇을 원하는지는 들려야 한다) */
+export const DRUNK_REPLY_RATIO = 0.5;
+
+/** 취객이면 전용 대사 목록, 아니면(또는 콘텐츠에 없으면) 일반 목록 */
+function drunkOr(
+  customer: Pick<CustomerSpec, "drunk"> | null,
+  drunkList: CustomerReply[] | undefined,
+  normal: CustomerReply[],
+): CustomerReply[] {
+  return customer?.drunk && drunkList && drunkList.length > 0 ? drunkList : normal;
+}
+
 export function localizeReply(reply: CustomerReply, customer: Pick<CustomerSpec, "tourist"> | null): CustomerReply {
   if (customer?.tourist && reply.en) return { ...reply, ja: reply.en };
   return reply;
@@ -202,7 +214,10 @@ function buildQueue(state: ShiftState, customer: CustomerSpec, rng: Rng, content
       });
       continue;
     }
-    const phrase = findCorrectPhrase(kind, customer, content, level);
+    // 단골의 고정 구매는 레벨과 무관하다 — 이 레벨에 문구가 없으면 가장 쉬운 변형으로 묻는다
+    const phrase =
+      findCorrectPhrase(kind, customer, content, level) ??
+      (customer.regularId ? easiestCorrectPhrase(kind, customer, content) : undefined);
     if (phrase) queue.push({ kind, correctPhraseId: phrase.id });
   }
 
@@ -423,12 +438,20 @@ function applyCorrect(
     phase: "reply",
     phaseRemainingMs: TIMING.REPLY_MS,
     mood: "happy",
-    bubble: localizeReply(
-      pickReply(content.replies[step.kind === "LISTEN" && step.target ? step.target : step.kind], replyRng(state, attempt)),
-      state.customer,
-    ),
+    bubble: localizeReply(correctReply(state, step, attempt, content), state.customer),
     afterReply: "advance",
   };
+}
+
+/** 정답 뒤 손님 반응 — 취객은 절반쯤 혀 꼬인 대사 */
+function correctReply(state: ShiftState, step: QuestionStep, attempt: number, content: WorkplaceContent): CustomerReply {
+  const rng = replyRng(state, attempt);
+  const normal = content.replies[step.kind === "LISTEN" && step.target ? step.target : step.kind];
+  const drunkList = content.drunkReplies?.reply;
+  if (state.customer?.drunk && drunkList && drunkList.length > 0 && rng.chance(DRUNK_REPLY_RATIO)) {
+    return pickReply(drunkList, rng);
+  }
+  return pickReply(normal, rng);
 }
 
 /**
@@ -478,7 +501,7 @@ function applyWrong(
     return {
       ...base,
       mood: "confused",
-      bubble: localizeReply(pickReply(content.confusedReplies, rng), customer),
+      bubble: localizeReply(pickReply(drunkOr(customer, content.drunkReplies?.confused, content.confusedReplies), rng), customer),
       phase: "reply",
       phaseRemainingMs: TIMING.CONFUSED_MS,
       afterReply: "retry",
@@ -493,7 +516,7 @@ function applyWrong(
       missed: state.missed + 1,
       consecutiveMissed: state.consecutiveMissed + 1,
       mood: "gone",
-      bubble: localizeReply(pickReply(content.leaveReplies, rng), customer),
+      bubble: localizeReply(pickReply(drunkOr(customer, content.drunkReplies?.leave, content.leaveReplies), rng), customer),
       phase: "leave",
       phaseRemainingMs: TIMING.LEAVE_MS,
       afterReply: "advance",

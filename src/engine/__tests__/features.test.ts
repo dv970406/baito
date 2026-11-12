@@ -316,3 +316,93 @@ describe("승급 시험(점장 점검 시프트)", () => {
     expect(examAvailability({ ...base, totalShifts: 2 }, ranks, monday).available).toBe(false);
   });
 });
+
+/* ───────────────────────── 단골 고정 구매 ───────────────────────── */
+
+describe("단골 고정 구매는 레벨과 무관", () => {
+  const smoker = {
+    ...CONTENT.regulars[0],
+    id: "smoker",
+    slots: ["asa" as const],
+    purchase: ["cigarettes", "water"],
+    lines: [],
+    firstWords: [],
+  };
+  // 리듀서는 단골 정보를 content.regulars 에서 찾으므로 콘텐츠에도 넣는다
+  const WITH_SMOKER: WorkplaceContent = { ...FULL, regulars: [...FULL.regulars, smoker] };
+  const asaWithTobacco: ShiftConfig = { ...SHIFTS.asa, activeTags: [...SHIFTS.asa.activeTags, "tobacco"] };
+
+  it("직급으로 담배가 해금됐으면 아침(Lv1)에도 단골은 Lv3 담배를 사고, 가장 쉬운 문구로 묻는다", () => {
+    const rng = createRng(1);
+    const customer = generateCustomer({
+      content: FULL, config: asaWithTobacco, index: 0, rng, tagWeights: initialTagWeights(),
+      recentTagSets: [], pendingRetryTags: [], regularsAvailable: [smoker], regularsAlreadyMet: [],
+      regularChance: 1, activeTags: ["hot", "cold", "chopsticks", "spoon", "tobacco"],
+    });
+    expect(customer.regularId).toBe("smoker");
+    expect(customer.items.map((i) => i.id)).toContain("cigarettes");
+    expect(customer.tobaccoNumber).toBe("23");
+
+    // 단골이 첫 손님으로 오는 시드를 찾는다(결정적)
+    let state = skip(start(make(asaWithTobacco, { content: WITH_SMOKER, regularsAvailable: [smoker], unlockedTags: ["tobacco"] }, 1)));
+    for (let seed = 2; seed < 200 && state.customer?.regularId !== "smoker"; seed++) {
+      state = skip(start(make(asaWithTobacco, { content: WITH_SMOKER, regularsAvailable: [smoker], unlockedTags: ["tobacco"] }, seed)));
+    }
+    expect(state.customer?.regularId).toBe("smoker");
+    const kinds = state.queue.map((q) => q.kind);
+    expect(kinds).toContain("AGE_CHECK");
+    expect(kinds).toContain("TOBACCO_PICK");
+  });
+
+  it("해금 전이면 단골도 담배를 사지 않는다", () => {
+    const customer = generateCustomer({
+      content: FULL, config: asaWithTobacco, index: 0, rng: createRng(1), tagWeights: initialTagWeights(),
+      recentTagSets: [], pendingRetryTags: [], regularsAvailable: [smoker], regularsAlreadyMet: [],
+      regularChance: 1, activeTags: ["hot", "cold", "chopsticks", "spoon"],
+    });
+    expect(customer.items.map((i) => i.id)).not.toContain("cigarettes");
+  });
+});
+
+/* ───────────────────────── 취객 대사 ───────────────────────── */
+
+describe("취객 전용 대사", () => {
+  const DRUNK_CONTENT: WorkplaceContent = {
+    ...FULL,
+    drunkReplies: {
+      reply: [{ ja: "うぃ〜", ko: "으이~" }],
+      confused: [{ ja: "あぁ？", ko: "어?" }],
+      leave: [{ ja: "帰るわ〜", ko: "간다~" }],
+    },
+  };
+  const drunkShift: ShiftConfig = { ...SHIFTS.shinya, drunkChance: 1, eventChance: 0, touristChance: 0, customerCount: 2 };
+
+  it("취객이 첫 오답에 당황하면 전용 대사, 짜증이 차서 나가면 전용 이탈 대사", () => {
+    let s = skip(start(make(drunkShift, { content: DRUNK_CONTENT })));
+    expect(s.customer?.drunk).toBe(true);
+    s = answer(tick(s, 300), wrongId(s));
+    expect(s.bubble?.ja).toBe("あぁ？");
+    // 짜증이 찰 때까지 계속 틀린다
+    for (let i = 0; i < 20 && s.phase !== "leave"; i++) {
+      s = s.phase === "question" ? answer(tick(s, 300), wrongId(s)) : skip(s);
+    }
+    expect(s.mood).toBe("gone");
+    expect(s.bubble?.ja).toBe("帰るわ〜");
+  });
+
+  it("정답 뒤 반응은 원래 응답과 전용 대사가 섞인다", () => {
+    const seen = new Set<string>();
+    for (let seed = 1; seed < 30; seed++) {
+      let s = skip(start(make(drunkShift, { content: DRUNK_CONTENT }, seed)));
+      s = answer(tick(s, 300), correctId(s));
+      if (s.bubble) seen.add(s.bubble.ja === "うぃ〜" ? "drunk" : "normal");
+    }
+    expect(seen).toEqual(new Set(["drunk", "normal"]));
+  });
+
+  it("취객이 아니면 전용 대사를 쓰지 않는다", () => {
+    let s = skip(start(make({ ...drunkShift, drunkChance: 0 }, { content: DRUNK_CONTENT })));
+    s = answer(tick(s, 300), wrongId(s));
+    expect(s.bubble?.ja).not.toBe("あぁ？");
+  });
+});

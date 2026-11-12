@@ -426,6 +426,18 @@ export interface WorkplaceContent {
   tobaccoRequests: CustomerReply[];
   /** 월별 시즌 */
   seasons: Season[];
+  /** 취객 전용 대사(선택). 없으면 일반 대사를 쓴다 */
+  drunkReplies?: DrunkReplies;
+}
+
+/** 취객 손님의 혀 꼬인 대사 — 응대 뒤 반응 일부, 당황, 이탈 */
+export interface DrunkReplies {
+  /** 정답 뒤 반응. 원래 응답 대신 DRUNK_REPLY_RATIO 확률로 쓴다 */
+  reply: CustomerReply[];
+  /** 첫 오답 때 당황 */
+  confused: CustomerReply[];
+  /** 짜증이 차서 나갈 때 */
+  leave: CustomerReply[];
 }
 
 /* ───────────────────────── 런타임(시프트 진행) 타입 ───────────────────────── */
