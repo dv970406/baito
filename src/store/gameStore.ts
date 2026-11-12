@@ -7,6 +7,7 @@
  * 저장되는 것: 플레이어 프로필(이력서), 최근 영수증(시프트 요약), 오디오 설정, 전송 대기 세션.
  * 저장되지 않는 것: 진행 중인 시프트 상태(새로고침하면 시프트는 처음부터).
  */
+import { isCaptionLang, type CaptionLang } from "@/i18n/caption";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { ItemTag, ShiftSummary, TagWeights } from "@/engine/types";
@@ -55,6 +56,8 @@ export interface GameState {
   /** 서버 전송에 실패해 재시도 대기 중인 세션 */
   pendingSessions: ShiftSummary[];
   audioEnabled: boolean;
+  /** 자막·UI 언어 — 일본어 본문 아래 작은 자막과 화면 문구. 기본 한국어 */
+  captionLang: CaptionLang;
   /** localStorage 복원 완료 여부 (SSR 불일치 방지) */
   hydrated: boolean;
   sync: SyncState;
@@ -64,6 +67,7 @@ export interface GameActions {
   setName: (name: string) => void;
   completeShift: (input: CompleteShiftInput) => ShiftSummary;
   setAudioEnabled: (enabled: boolean) => void;
+  setCaptionLang: (lang: CaptionLang) => void;
   markHydrated: () => void;
   /** 서버 프로필이 더 최신이면 교체 */
   mergeServerProfile: (server: PlayerProfile) => boolean;
@@ -113,6 +117,7 @@ const initialState: GameState = {
   sessions: [],
   pendingSessions: [],
   audioEnabled: true,
+  captionLang: "ko",
   hydrated: false,
   sync: { status: "idle", backend: null, lastSyncedAt: null, lastError: null },
 };
@@ -202,6 +207,8 @@ export const useGameStore = create<GameStore>()(
 
       setAudioEnabled: (enabled) => set({ audioEnabled: enabled }),
 
+      setCaptionLang: (lang) => set({ captionLang: lang }),
+
       markHydrated: () => set({ hydrated: true }),
 
       mergeServerProfile: (server) => {
@@ -257,6 +264,7 @@ export const useGameStore = create<GameStore>()(
         sessions: s.sessions,
         pendingSessions: s.pendingSessions,
         audioEnabled: s.audioEnabled,
+        captionLang: s.captionLang,
       }),
       /** 예전 버전 세이브(새 태그·직급 필드 없음)를 현재 계약으로 맞춘다 */
       merge: (persisted, current) => {
@@ -265,6 +273,7 @@ export const useGameStore = create<GameStore>()(
           ...current,
           ...saved,
           profile: normalizeProfile({ ...current.profile, ...(saved.profile ?? {}) }),
+          captionLang: isCaptionLang(saved.captionLang) ? saved.captionLang : current.captionLang,
         };
       },
       onRehydrateStorage: () => (state) => {

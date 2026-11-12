@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useT } from "@/i18n/useT";
 import { Icon } from "./Icon";
 import { cn } from "@/lib/cn";
 
@@ -15,6 +16,7 @@ export interface ComboChipProps {
  * n 이 커질 때마다 살짝 튀는 펄스(Web Animations API, 모션 축소 설정이면 생략).
  */
 export function ComboChip({ n, className }: ComboChipProps) {
+  const { t } = useT();
   const ref = useRef<HTMLSpanElement>(null);
   const prev = useRef(n);
 
@@ -35,7 +37,7 @@ export function ComboChip({ n, className }: ComboChipProps) {
     <span
       ref={ref}
       role="status"
-      aria-label={`콤보 ${n}`}
+      aria-label={t("ui.combo", { n })}
       className={cn(
         "inline-flex items-center gap-1 rounded-pill bg-combo-soft px-2.5 py-1.5 font-num text-[13px] font-extrabold leading-none text-combo",
         className,

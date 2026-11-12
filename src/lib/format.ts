@@ -65,3 +65,33 @@ export function formatReceiptDate(iso: string, kanji: string, hours: string): st
     : `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
   return `${ymd} ${kanji}シフト ${hours}`;
 }
+
+/* ───────────────────────── 자막 언어별 (ko / en) ───────────────────────── */
+
+/** 영어 달 이름 (1월 = index 0) */
+const MONTH_EN = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+/** 12 → ko "12월" · en "December" (범위 밖이면 숫자 그대로) */
+export function formatMonth(month: number, lang: "ko" | "en" = "ko"): string {
+  if (lang === "en") return MONTH_EN[month - 1] ?? String(month);
+  return `${month}월`;
+}
+
+/** 지난 영수증 목록용 짧은 날짜 — ko "11/10" · en "Nov 10" */
+export function formatShortDate(date: Date, lang: "ko" | "en" = "ko"): string {
+  if (lang === "en") return `${(MONTH_EN[date.getMonth()] ?? "").slice(0, 3)} ${date.getDate()}`;
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}

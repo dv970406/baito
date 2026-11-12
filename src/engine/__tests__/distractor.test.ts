@@ -63,6 +63,14 @@ describe("renderPhrase / formatYen", () => {
     expect(r.ko).toBe("합계 678엔입니다");
   });
 
+  it("영어 자막도 금액을 채우고 yen 을 한 번만 붙인다", () => {
+    const base = CONTENT.phrases.find((p) => p.id === "total")!;
+    const customer = customerOf([ITEMS.bento, ITEMS.ice]);
+    expect(renderPhrase({ ...base, en: "That's {total}, please." }, customer).en).toBe("That's 678 yen, please.");
+    expect(renderPhrase({ ...base, en: "That's {total} yen." }, customer).en).toBe("That's 678 yen.");
+    expect(renderPhrase(base, customer).en).toBeUndefined();
+  });
+
   it("읽기(후리가나) 템플릿의 {total}えん 은 えん 을 두 번 붙이지 않는다", () => {
     const total = { ...CONTENT.phrases.find((p) => p.id === "total")!, reading: "ごうけいで {total}えんです" };
     const r = renderPhrase(total, customerOf([ITEMS.bento, ITEMS.ice]));

@@ -1,4 +1,8 @@
+"use client";
+
 import type { CSSProperties } from "react";
+import { useT } from "@/i18n/useT";
+import type { MessageKey } from "@/i18n/messages";
 import type { CustomerMood, HairStyle, RegularVisual } from "@/engine/types";
 import { cn } from "@/lib/cn";
 
@@ -19,12 +23,12 @@ export interface AvatarProps {
   className?: string;
 }
 
-const MOOD_KO: Record<CustomerMood, string> = {
-  neutral: "보통",
-  happy: "기분 좋음",
-  confused: "당황",
-  annoyed: "짜증",
-  gone: "떠남",
+const MOOD_KEY: Record<CustomerMood, MessageKey> = {
+  neutral: "ui.mood.neutral",
+  happy: "ui.mood.happy",
+  confused: "ui.mood.confused",
+  annoyed: "ui.mood.annoyed",
+  gone: "ui.mood.gone",
 };
 
 const DEFAULT_HAIR_COLOR = "#2B2A33";
@@ -145,6 +149,7 @@ function Mouth({ mood, stroke }: { mood: CustomerMood; stroke: string }) {
  * 색은 씬 전용 hex 라 style 로 받는다. role="img" + "{이름} · {기분}".
  */
 export function Avatar({ name, mood = "neutral", visual, size = "md", body = false, accentKind = "tie", className }: AvatarProps) {
+  const { t } = useT();
   const cfg = SIZE_CFG[size];
   const hairStyle = visual?.hairStyle ?? "short";
   const hairColor = visual?.hairColor ?? DEFAULT_HAIR_COLOR;
@@ -155,7 +160,7 @@ export function Avatar({ name, mood = "neutral", visual, size = "md", body = fal
   return (
     <div
       role="img"
-      aria-label={`${name} · ${MOOD_KO[mood]}`}
+      aria-label={`${name} · ${t(MOOD_KEY[mood])}`}
       data-mood={mood}
       data-hair={hairStyle}
       className={cn("relative inline-flex flex-col items-center", className)}

@@ -1,3 +1,6 @@
+"use client";
+
+import { useT } from "@/i18n/useT";
 import { cn } from "@/lib/cn";
 
 export interface SpeechBubbleProps {
@@ -15,6 +18,7 @@ export interface SpeechBubbleProps {
  * 일본어가 주(text-bubble), 한국어는 작은 부제. aria-live 로 대사 변화를 읽어준다.
  */
 export function SpeechBubble({ ja, ko, tail = "left", className }: SpeechBubbleProps) {
+  const { t } = useT();
   const empty = ja.trim().length === 0;
   return (
     <div
@@ -26,7 +30,7 @@ export function SpeechBubble({ ja, ko, tail = "left", className }: SpeechBubbleP
       )}
     >
       {empty ? (
-        <span className="text-ink-muted" aria-label="말 없음">
+        <span className="text-ink-muted" aria-label={t("ui.noWords")}>
           …
         </span>
       ) : (

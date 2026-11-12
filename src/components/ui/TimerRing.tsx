@@ -1,3 +1,6 @@
+"use client";
+
+import { useT } from "@/i18n/useT";
 import { cn } from "@/lib/cn";
 
 export interface TimerRingProps {
@@ -15,6 +18,7 @@ const STROKE = 4;
  * 가운데에 남은 초를 소수 한 자리로 보여준다. 호는 100ms linear 로 부드럽게 줄어든다.
  */
 export function TimerRing({ remainingMs, totalMs, size = 36, className }: TimerRingProps) {
+  const { t } = useT();
   const r = size / 2 - STROKE / 2 - 1;
   const circumference = 2 * Math.PI * r;
   const ratio = totalMs > 0 ? Math.min(1, Math.max(0, remainingMs / totalMs)) : 0;
@@ -25,7 +29,7 @@ export function TimerRing({ remainingMs, totalMs, size = 36, className }: TimerR
   return (
     <div
       role="timer"
-      aria-label={`남은 시간 ${label}초`}
+      aria-label={t("ui.timeLeft", { s: label })}
       aria-live="off"
       className={cn("relative inline-flex shrink-0 items-center justify-center", className)}
       style={{ width: size, height: size }}

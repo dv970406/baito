@@ -30,6 +30,9 @@ import { formatReceiptDate } from "@/lib/format";
 import { renderFrozenMomentPng, renderReceiptPng } from "@/lib/image";
 import { shareFile, shareText, type ShareFileResult } from "@/lib/share";
 import { useGameStore } from "@/store/gameStore";
+import { cap, capPair, type CaptionLang } from "@/i18n/caption";
+import { translate } from "@/i18n/messages";
+import { useT } from "@/i18n/useT";
 import {
   buildShareText,
   examVerdict,
@@ -44,15 +47,15 @@ import {
 const TOAST_MS = 2400;
 
 /** 파일 공유 결과 → 안내 문구 */
-export function fileToast(result: ShareFileResult | "failed"): string | null {
+export function fileToast(result: ShareFileResult | "failed", lang: CaptionLang = "ko"): string | null {
   switch (result) {
     case "shared":
-      return "공유했어요";
+      return translate(lang, "toast.shared");
     case "downloaded":
-      return "이미지를 저장했어요";
+      return translate(lang, "toast.imageSaved");
     case "unsupported":
     case "failed":
-      return "이 브라우저에서는 이미지를 만들 수 없어요";
+      return translate(lang, "toast.imageFailed");
     default:
       return null;
   }
@@ -67,6 +70,7 @@ export function ReceiptScreen() {
   const hydrated = useGameStore((s) => s.hydrated);
   const sessions = useGameStore((s) => s.sessions);
   const profile = useGameStore((s) => s.profile);
+  const { t, lang } = useT();
   // 마감 직후 폴백 — 복원 전엔 어차피 스켈레톤이라 초기화 때 한 번 읽어도 SSR 불일치가 없다
   const [fallback] = useState<ShiftSummary | null>(() => (typeof window === "undefined" ? null : loadLastReceipt()));
   const [selected, setSelected] = useState(0);
@@ -90,11 +94,11 @@ export function ReceiptScreen() {
   const handleShare = async () => {
     if (!current) return;
     const result = await shareText({
-      title: "BAITO 마감 영수증",
-      text: buildShareText(konbini, current),
+      title: t("receipt.shareTitle"),
+      text: buildShareText(konbini, current, lang),
       url: typeof window === "undefined" ? undefined : window.location.origin,
     });
-    showToast(shareToast(result));
+    showToast(shareToast(result, lang));
   };
 
   /** 영수증 PNG 저장(공유 시트 지원 시 공유) */
@@ -102,13 +106,17 @@ export function ReceiptScreen() {
     if (!current || busy) return;
     setBusy("receipt");
     try {
-      const blob = await renderReceiptPng(current, profile, konbini, { day });
+      const blob = await renderReceiptPng(current, profile, konbini, { day, lang });
       if (!blob) {
-        showToast(fileToast("failed"));
+        showToast(fileToast("failed", lang));
         return;
       }
-      const result = await shareFile(blob, `baito-receipt-${fileStamp(current.playedAt)}.png`, buildShareText(konbini, current));
-      showToast(fileToast(result));
+      const result = await shareFile(
+        blob,
+        `baito-receipt-${fileStamp(current.playedAt)}.png`,
+        buildShareText(konbini, current, lang),
+      );
+      showToast(fileToast(result, lang));
     } finally {
       setBusy(null);
     }
@@ -119,12 +127,12 @@ export function ReceiptScreen() {
     if (!current || busy) return;
     setBusy("moment");
     try {
-      const blob = await renderFrozenMomentPng(current, konbini);
+      const blob = await renderFrozenMomentPng(current, konbini, lang);
       if (!blob) {
-        showToast(fileToast("failed"));
+        showToast(fileToast("failed", lang));
         return;
       }
-      const label = hardestLabel(konbini, current.hardest);
+      const label = hardestLabel(konbini, current.hardest, lang);
       const seconds = frozenSeconds(current);
       const line = seconds !== null ? `${seconds}秒 固まった` : "一番迷った一言";
       const result = await shareFile(
@@ -132,7 +140,7 @@ export function ReceiptScreen() {
         `baito-moment-${fileStamp(current.playedAt)}.png`,
         `「${label?.ja ?? ""}」 ${line} #BAITO #${konbini.code}`,
       );
-      showToast(fileToast(result));
+      showToast(fileToast(result, lang));
     } finally {
       setBusy(null);
     }
@@ -143,7 +151,7 @@ export function ReceiptScreen() {
       <header className="flex items-center justify-between px-screen">
         <Link
           href="/konbini"
-          aria-label="홈으로"
+          aria-label={t("common.home")}
           className="inline-flex size-touch items-center justify-center rounded-pill bg-white/16 text-brand-ink focus-visible:shadow-focus"
         >
           <Icon name="close" size={20} strokeWidth={2.5} />
@@ -157,7 +165,7 @@ export function ReceiptScreen() {
       {!hydrated ? (
         <ReceiptPaper className="mx-7 mt-[18px] min-h-[320px] items-center justify-center" aria-busy="true">
           <span className="font-ko text-caption text-ink-muted" role="status">
-            영수증을 꺼내는 중…
+            {t("receipt.loading")}
           </span>
         </ReceiptPaper>
       ) : current ? (
@@ -181,10 +189,10 @@ export function ReceiptScreen() {
         {hydrated && current ? (
           <>
             <CtaButton variant="onSurface" icon="share" onClick={handleShare}>
-              영수증 공유
+              {t("receipt.share")}
             </CtaButton>
             <div className="grid grid-cols-2 gap-2.5">
-              <CtaButton variant="ghost" icon="download" onClick={handleSaveImage} loading={busy === "receipt"} aria-label="영수증 이미지 저장">
+              <CtaButton variant="ghost" icon="download" onClick={handleSaveImage} loading={busy === "receipt"} aria-label={t("receipt.saveImageAria")}>
                 <span lang="ja">画像を保存</span>
               </CtaButton>
               <CtaButton
@@ -193,13 +201,13 @@ export function ReceiptScreen() {
                 onClick={handleShareMoment}
                 loading={busy === "moment"}
                 disabled={!current.hardest}
-                aria-label="얼어붙은 순간 공유 카드"
+                aria-label={t("receipt.momentAria")}
               >
                 <span lang="ja">この一瞬をシェア</span>
               </CtaButton>
             </div>
             <CtaButton as="link" href="/konbini" variant="ghost">
-              다음 시프트
+              {t("receipt.nextShift")}
             </CtaButton>
           </>
         ) : null}
@@ -214,8 +222,9 @@ export function ReceiptScreen() {
 /* ───────────────────────── 영수증 종이 ───────────────────────── */
 
 function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerName: string; day: number }) {
+  const { t, lang } = useT();
   const config = konbini.shifts[summary.slot];
-  const hardest = hardestLabel(konbini, summary.hardest);
+  const hardest = hardestLabel(konbini, summary.hardest, lang);
   const exam = examVerdict(konbini, summary);
   const regularsMet = summary.regularsMet
     .map((id) => konbini.regulars.find((r) => r.id === id))
@@ -224,7 +233,7 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
   const wageBefore = summary.wageAfter - summary.wageDelta;
 
   return (
-    <ReceiptPaper className="mx-7 mt-[18px]" aria-label="마감 영수증">
+    <ReceiptPaper className="mx-7 mt-[18px]" aria-label={t("receipt.paper")}>
       <div className="flex flex-col items-center gap-1 pb-3.5">
         <span lang="ja" className="font-jp text-phrase-lg tracking-[0.1em] text-ink">
           {konbini.storeNameJa}
@@ -244,36 +253,36 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
 
       <div className="flex flex-col gap-2.5 py-3.5">
         <StatRow
-          label={<Label ja="応対" ko="손님 응대" />}
+          label={<Label ja="応対" ko={t("receipt.served")} />}
           value={
             <>
               {summary.served}名<span className="text-ink-muted"> / {config.customerCount}</span>
             </>
           }
         />
-        <StatRow label={<Label ja="離脱" ko="놓친 손님" />} value={`${summary.missed}名`} tone={summary.missed > 0 ? "irritation" : "default"} />
+        <StatRow label={<Label ja="離脱" ko={t("receipt.missed")} />} value={`${summary.missed}名`} tone={summary.missed > 0 ? "irritation" : "default"} />
         <dl className="m-0 grid grid-cols-4 gap-1.5">
           <Grade label="Perfect" value={summary.perfects} tone="perfect" />
           <Grade label="Good" value={summary.goods} />
           <Grade label="OK" value={summary.oks} />
           <Grade label="Late" value={summary.lates} tone={summary.lates > 0 ? "combo" : undefined} />
         </dl>
-        <StatRow label={<Label ja="最大コンボ" ko="최고 콤보" />} value={`×${summary.maxCombo}`} />
+        <StatRow label={<Label ja="最大コンボ" ko={t("receipt.maxCombo")} />} value={`×${summary.maxCombo}`} />
         {summary.spokens > 0 ? (
           <StatRow
-            label={<Label ja="声で答えた" ko="말로 답한 응대" />}
-            value={`${summary.spokens}회 · +¥${summary.spokens * SPOKEN_BONUS}`}
+            label={<Label ja="声で答えた" ko={t("receipt.spoken")} />}
+            value={t("receipt.spokenValue", { n: summary.spokens, bonus: summary.spokens * SPOKEN_BONUS })}
             tone="perfect"
           />
         ) : null}
         {summary.events > 0 ? (
-          <StatRow label={<Label ja="突発対応" ko="돌발 응대" />} value={`${summary.events}件`} />
+          <StatRow label={<Label ja="突発対応" ko={t("receipt.events")} />} value={`${summary.events}件`} />
         ) : null}
       </div>
       <DashedDivider />
 
       <div className="flex items-baseline justify-between pb-2.5 pt-3.5">
-        <Label ja="今日の時給" ko="오늘 시급" strong />
+        <Label ja="今日の時給" ko={t("receipt.todayWage")} strong />
         <MoneyText yen={summary.wageAfter} size="money-xl" />
       </div>
       <div className="flex items-baseline justify-between pb-3.5 font-ko text-caption text-ink-muted">
@@ -286,14 +295,14 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
 
       {/* 가장 헷갈린 한마디 */}
       <div className="mt-3.5 flex flex-col gap-1 rounded-lg bg-combo-soft p-3">
-        <span className="font-jp text-label text-combo">一番迷った一言 · 오늘 가장 헷갈린 한마디</span>
+        <span className="font-jp text-label text-combo">一番迷った一言 · {t("receipt.hardest")}</span>
         {hardest && summary.hardest ? (
           <>
             <span lang="ja" className="font-jp text-[16px] font-extrabold leading-snug text-ink">
               {hardest.ja}
             </span>
             <span className="font-ko text-caption text-ink-muted">
-              {[hardest.ko, hardestTail(summary.hardest)].filter(Boolean).join(" · ")}
+              {[hardest.ko, hardestTail(summary.hardest, lang)].filter(Boolean).join(" · ")}
             </span>
           </>
         ) : (
@@ -301,7 +310,7 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
             <span lang="ja" className="font-jp text-[16px] font-extrabold leading-snug text-ink">
               なし
             </span>
-            <span className="font-ko text-caption text-ink-muted">헷갈린 말이 없었어요</span>
+            <span className="font-ko text-caption text-ink-muted">{t("receipt.noHardest")}</span>
           </>
         )}
       </div>
@@ -309,11 +318,11 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
       {summary.firstSuccessTags.length > 0 ? (
         <div className="mt-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Label ja="初めて成功" ko="처음 성공" />
-            <ul className="m-0 flex list-none gap-1 p-0" aria-label="처음 성공한 상품 종류">
+            <Label ja="初めて成功" ko={t("receipt.firstSuccess")} />
+            <ul className="m-0 flex list-none gap-1 p-0" aria-label={t("receipt.firstSuccessList")}>
               {summary.firstSuccessTags.map((tag) => (
                 <li key={tag}>
-                  <KanjiBadge kanji={TAG_KANJI[tag].kanji} tone="perfect" label={TAG_KANJI[tag].ko} />
+                  <KanjiBadge kanji={TAG_KANJI[tag].kanji} tone="perfect" label={cap(TAG_KANJI[tag], lang)} />
                 </li>
               ))}
             </ul>
@@ -324,14 +333,14 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
 
       {regularsMet.length > 0 ? (
         <div className="mt-3 flex items-baseline justify-between gap-3">
-          <Label ja="会った常連" ko="만난 단골" />
+          <Label ja="会った常連" ko={t("receipt.regularsMet")} />
           <span lang="ja" className="text-right font-jp text-body font-bold text-ink">
             {regularsMet.map((r) => r.nameJa).join(" · ")}
           </span>
         </div>
       ) : null}
 
-      {manager ? <ManagerNote ja={manager.ja} ko={manager.ko} variant="plain" className="mt-3.5" /> : null}
+      {manager ? <ManagerNote ja={manager.ja} ko={cap(manager, lang)} variant="plain" className="mt-3.5" /> : null}
 
       <Barcode className="mt-4" />
       <span className="mt-1.5 text-center font-num text-micro tracking-[0.1em] text-ink-muted">
@@ -343,6 +352,7 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
 
 /** 승급 시험(점장 점검) 결과 — 영수증 머리 아래 */
 function ExamBlock({ exam }: { exam: NonNullable<ReturnType<typeof examVerdict>> }) {
+  const { t, lang } = useT();
   return (
     <div
       data-testid="exam-block"
@@ -354,7 +364,7 @@ function ExamBlock({ exam }: { exam: NonNullable<ReturnType<typeof examVerdict>>
     >
       <div className="flex items-baseline justify-between gap-2">
         <span className={cn("font-jp text-label", exam.passed ? "text-accent" : "text-ink-muted")}>
-          店長点検 · 점장 점검
+          店長点検 · {t("receipt.examTitle")}
         </span>
         <span lang="ja" className="font-jp text-phrase-lg text-ink">
           {exam.passed ? "合格" : "不合格"}
@@ -364,18 +374,18 @@ function ExamBlock({ exam }: { exam: NonNullable<ReturnType<typeof examVerdict>>
         <span lang="ja">
           基準 ×{exam.comboRequired} · 最高 ×{exam.maxCombo}
         </span>
-        <span className={exam.missed > 0 ? "text-irritation-ink" : undefined}>이탈 {exam.missed}명</span>
+        <span className={exam.missed > 0 ? "text-irritation-ink" : undefined}>{t("receipt.walkouts", { n: exam.missed })}</span>
       </div>
       {exam.passed && exam.rank ? (
         <span className="font-ko text-caption text-ink">
-          새 명찰 ·{" "}
+          {t("receipt.newTag")} ·{" "}
           <span lang="ja" className="font-jp font-extrabold">
             {exam.rank.ja}
           </span>{" "}
-          {exam.rank.ko}
+          {cap(exam.rank, lang)}
         </span>
       ) : exam.passed ? null : (
-        <span className="font-ko text-caption text-ink-muted">다음 주 월요일에 다시 볼 수 있어요</span>
+        <span className="font-ko text-caption text-ink-muted">{t("receipt.retryNextMonday")}</span>
       )}
     </div>
   );
@@ -423,15 +433,16 @@ function History({
   onToggle: () => void;
   onSelect: (index: number) => void;
 }) {
+  const { t, lang } = useT();
   return (
-    <section className="mx-7 mt-3" aria-label="지난 영수증">
+    <section className="mx-7 mt-3" aria-label={t("receipt.history")}>
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
         className="flex min-h-touch w-full items-center justify-between rounded-pill bg-white/16 px-4 font-ko text-[13px] font-bold text-brand-ink focus-visible:shadow-focus"
       >
-        <span>지난 영수증 {list.length - 1}장</span>
+        <span>{t("receipt.historyCount", { n: list.length - 1 })}</span>
         <Icon name="chevronDown" size={16} className={cn("transition-transform duration-150 motion-reduce:transition-none", open && "rotate-180")} />
       </button>
       {open ? (
@@ -451,12 +462,12 @@ function History({
                       isSelected && "bg-accent-soft",
                     )}
                   >
-                    <KanjiBadge kanji={config.kanji} tone={isSelected ? "accent" : "sunken"} label={`${config.nameKo} 시프트`} />
+                    <KanjiBadge kanji={config.kanji} tone={isSelected ? "accent" : "sunken"} label={t("common.shiftName", { name: capPair(config.nameKo, config.nameEn, lang) })} />
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="font-num text-body font-bold text-ink">{shortDate(item.playedAt)}</span>
+                      <span className="font-num text-body font-bold text-ink">{shortDate(item.playedAt, lang)}</span>
                       <span className="font-ko text-caption text-ink-muted">
-                        {index === 0 ? "최근 · " : ""}
-                        {item.served}名 응대 · Perfect {item.perfects}
+                        {index === 0 ? `${t("receipt.latest")} · ` : ""}
+                        {t("receipt.historyLine", { served: item.served, perfects: item.perfects })}
                       </span>
                     </span>
                     <MoneyText yen={item.wageDelta} delta />
@@ -474,14 +485,15 @@ function History({
 /* ───────────────────────── 빈 상태 ───────────────────────── */
 
 function EmptyReceipt() {
+  const { t } = useT();
   return (
     <div className="mx-7 mt-[18px]">
       <Card variant="raised" padding="lg" radius="3xl" className="flex flex-col gap-3">
         <span lang="ja" className="font-jp text-heading text-ink">
           まだレシートがありません
         </span>
-        <p className="m-0 font-ko text-body text-ink">아직 영수증이 없어요.</p>
-        <p className="m-0 font-ko text-caption text-ink-muted">첫 시프트를 마치면 마감 영수증이 여기 쌓여요.</p>
+        <p className="m-0 font-ko text-body text-ink">{t("receipt.empty")}</p>
+        <p className="m-0 font-ko text-caption text-ink-muted">{t("receipt.emptyHint")}</p>
         <CtaButton as="link" href="/konbini" variant="primary" icon="calendar">
           出勤する
         </CtaButton>

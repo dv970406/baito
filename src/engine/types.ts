@@ -169,6 +169,8 @@ export interface Phrase {
   ja: string;
   /** 한국어 번역(항상 부제로, 작게) */
   ko: string;
+  /** 영어 자막(선택) — 자막 언어가 영어일 때 ko 대신 보인다. 없으면 ko */
+  en?: string;
   /** 히라가나 읽기(선택) — 후리가나 줄 */
   reading?: string;
   /** 단어 분해 한 줄 (도감 문장 카드를 길게 누르면 보인다). 예: "温め(데우다)+ます(정중)+か(의문)" */
@@ -206,6 +208,8 @@ export interface Item {
   id: string;
   ja: string;
   ko: string;
+  /** 영어 자막(선택) — 자막 언어가 영어일 때 ko 대신 보인다. 없으면 ko */
+  en?: string;
   /** 엔(¥) */
   price: number;
   tags: ItemTag[];
@@ -235,6 +239,8 @@ export interface RegularLine {
   affinity: number;
   ja: string;
   ko: string;
+  /** 영어 자막(선택) — 자막 언어가 영어일 때 ko 대신 보인다. 없으면 ko */
+  en?: string;
 }
 
 export type RankId = "shinjin" | "ippan" | "senpai" | "leader" | "fukutencho" | "tencho";
@@ -242,9 +248,9 @@ export const RANK_IDS: readonly RankId[] = ["shinjin", "ippan", "senpai", "leade
 
 export type RegularUnlock =
   | { type: "open" }
-  | { type: "slot"; slot: ShiftSlot; label: string }
-  | { type: "rank"; rank: RankId; label: string }
-  | { type: "season"; month: number; label: string };
+  | { type: "slot"; slot: ShiftSlot; label: string; labelEn?: string }
+  | { type: "rank"; rank: RankId; label: string; labelEn?: string }
+  | { type: "season"; month: number; label: string; labelEn?: string };
 
 export type HairStyle = "short" | "long" | "cap" | "bald" | "bun" | "ponytail" | "mohawk" | "hat";
 
@@ -262,8 +268,12 @@ export interface Regular {
   id: string;
   nameJa: string;
   nameKo: string;
+  /** 영어 이름(선택) */
+  nameEn?: string;
   /** 샐러리맨, 간호사 … */
   role: string;
+  /** 직업 영어 자막(선택) */
+  roleEn?: string;
   /** 등장 시간대 */
   slots: ShiftSlot[];
   /** 고정 구매 패턴(item id). 빈 배열이면 매번 무작위 */
@@ -272,6 +282,8 @@ export interface Regular {
   /** 말버릇 한 줄 (ja) */
   tic: string;
   ticKo: string;
+  /** 말버릇 영어 자막(선택) */
+  ticEn?: string;
   /** 호감도 단계별 대사 (최대 5줄) */
   lines: RegularLine[];
   /** "처음 들은 말"로 수집되는 짧은 대사들 */
@@ -301,6 +313,8 @@ export interface ManagerLine {
   month?: number;
   ja: string;
   ko: string;
+  /** 영어 자막(선택) — 자막 언어가 영어일 때 ko 대신 보인다. 없으면 ko */
+  en?: string;
 }
 
 /** 승급 시험(점장 점검 시프트) 기준 — 최고 콤보가 combo 이상이고 이탈 0 이면 합격 */
@@ -314,6 +328,8 @@ export interface RankDef {
   id: RankId;
   ja: string;
   ko: string;
+  /** 영어 자막(선택) — 자막 언어가 영어일 때 ko 대신 보인다. 없으면 ko */
+  en?: string;
   /** 이 직급의 승급 시험을 볼 수 있게 되는 누적 완료 시프트 수 */
   shiftsRequired: number;
   /** 승급 시 해금되는 태그 */
@@ -337,11 +353,13 @@ export interface Season {
   month: number;
   nameJa: string;
   nameKo: string;
+  nameEn?: string;
   /** 매장 포스터 문구(씬 뒷벽) */
   posterJa: string;
   /** 규칙 변경 공지 — 홈과 출근 시트에 보인다 */
   noticeJa?: string;
   noticeKo?: string;
+  noticeEn?: string;
   rule?: SeasonRule;
 }
 
@@ -350,6 +368,8 @@ export interface ShiftConfig {
   /** 한자 한 글자 배지 (朝/昼/夕/深) */
   kanji: string;
   nameKo: string;
+  /** 영어 이름(선택) */
+  nameEn?: string;
   /** "07:00–10:00" */
   hours: string;
   level: number;
@@ -367,6 +387,8 @@ export interface ShiftConfig {
   itemsPerCustomer: [number, number];
   /** 홈 화면 한 줄 설명 */
   descriptionKo: string;
+  /** 영어 한 줄 설명(선택) */
+  descriptionEn?: string;
   /** 선택지 하나가 가려져(한자 → 〇) 나오는 확률 (Lv2 부터) */
   maskChance?: number;
   /** 질문 하나가 리스닝 전용(LISTEN)으로 바뀌는 확률 (Lv2 부터) */
@@ -387,6 +409,8 @@ export interface ShiftConfig {
 export interface ListenTargetLabel {
   ja: string;
   ko: string;
+  /** 영어 자막(선택) — 자막 언어가 영어일 때 ko 대신 보인다. 없으면 ko */
+  en?: string;
   /** UI 아이콘 이름 (IconName) */
   icon: string;
 }
@@ -398,6 +422,7 @@ export interface WorkplaceContent {
   code: string;
   nameJa: string;
   nameKo: string;
+  nameEn?: string;
   /** マルマート 神田南口店 */
   storeNameJa: string;
   storeBranchJa: string;
@@ -455,6 +480,8 @@ export interface AnswerOption {
   phraseId: string;
   ja: string;
   ko: string;
+  /** 영어 자막(선택) */
+  en?: string;
   isCorrect: boolean;
   /** 히라가나 읽기 (후리가나 줄) */
   reading?: string;

@@ -112,50 +112,50 @@ export function regularLeaveLine(regular: Regular, affinity: number): CustomerRe
   const line =
     regular.lines.find((l) => l.affinity === level) ??
     regular.lines.filter((l) => l.affinity <= level).at(-1);
-  if (line) return { ja: line.ja, ko: line.ko };
-  return { ja: regular.tic, ko: regular.ticKo };
+  if (line) return { ja: line.ja, ko: line.ko, en: line.en };
+  return { ja: regular.tic, ko: regular.ticKo, en: regular.ticEn };
 }
 
 /* ───────────────────────── 라벨 ───────────────────────── */
 
 /** 상품 태그 → 한자 한 글자 (카운터 위 작은 배지) */
-export const TAG_KANJI: Record<ItemTag, { kanji: string; ko: string }> = {
-  hot: { kanji: "温", ko: "따뜻한 상품" },
-  cold: { kanji: "冷", ko: "찬 상품" },
-  chopsticks: { kanji: "箸", ko: "젓가락" },
-  spoon: { kanji: "匙", ko: "스푼" },
-  straw: { kanji: "吸", ko: "빨대" },
-  alcohol: { kanji: "酒", ko: "술" },
-  tobacco: { kanji: "煙", ko: "담배" },
-  fragile_hot: { kanji: "熱", ko: "뜨거운 음료" },
-  oden: { kanji: "お", ko: "오뎅" },
-  fried: { kanji: "揚", ko: "튀김" },
+export const TAG_KANJI: Record<ItemTag, { kanji: string; ko: string; en: string }> = {
+  hot: { kanji: "温", ko: "따뜻한 상품", en: "Hot item" },
+  cold: { kanji: "冷", ko: "찬 상품", en: "Cold item" },
+  chopsticks: { kanji: "箸", ko: "젓가락", en: "Chopsticks" },
+  spoon: { kanji: "匙", ko: "스푼", en: "Spoon" },
+  straw: { kanji: "吸", ko: "빨대", en: "Straw" },
+  alcohol: { kanji: "酒", ko: "술", en: "Alcohol" },
+  tobacco: { kanji: "煙", ko: "담배", en: "Tobacco" },
+  fragile_hot: { kanji: "熱", ko: "뜨거운 음료", en: "Hot drink" },
+  oden: { kanji: "お", ko: "오뎅", en: "Oden" },
+  fried: { kanji: "揚", ko: "튀김", en: "Fried food" },
 };
 
 /** 손님이 내민 결제 수단 */
-export const PAYMENT_LABEL: Record<PaymentMethod, { ja: string; ko: string; icon: IconName }> = {
-  cash: { ja: "現金", ko: "현금", icon: "coin" },
-  ic: { ja: "IC", ko: "교통카드", icon: "card" },
-  qr: { ja: "QR", ko: "QR 결제", icon: "qr" },
-  credit: { ja: "クレジット", ko: "신용카드", icon: "card" },
+export const PAYMENT_LABEL: Record<PaymentMethod, { ja: string; ko: string; en: string; icon: IconName }> = {
+  cash: { ja: "現金", ko: "현금", en: "cash", icon: "coin" },
+  ic: { ja: "IC", ko: "교통카드", en: "IC card", icon: "card" },
+  qr: { ja: "QR", ko: "QR 결제", en: "QR code", icon: "qr" },
+  credit: { ja: "クレジット", ko: "신용카드", en: "credit card", icon: "card" },
 };
 
 /** 돌발 이벤트 손님 → 카운터 위 한자 배지 (길 묻기는 배지 대신 방향 표지) */
-export const EVENT_KANJI: Record<Exclude<EventKind, "DIRECTIONS">, { kanji: string; ja: string; ko: string }> = {
-  TOILET: { kanji: "手洗", ja: "お手洗い", ko: "화장실" },
-  COPIER: { kanji: "複写", ja: "コピー機", ko: "복사기" },
-  ATM: { kanji: "ATM", ja: "ATM", ko: "현금 인출기" },
-  DELIVERY: { kanji: "宅配", ja: "宅配便", ko: "택배" },
-  UTILITY_BILL: { kanji: "払込", ja: "払込票", ko: "공공요금 납부" },
-  TICKET: { kanji: "券", ja: "チケット", ko: "티켓" },
+export const EVENT_KANJI: Record<Exclude<EventKind, "DIRECTIONS">, { kanji: string; ja: string; ko: string; en: string }> = {
+  TOILET: { kanji: "手洗", ja: "お手洗い", ko: "화장실", en: "Restroom" },
+  COPIER: { kanji: "複写", ja: "コピー機", ko: "복사기", en: "Copier" },
+  ATM: { kanji: "ATM", ja: "ATM", ko: "현금 인출기", en: "ATM" },
+  DELIVERY: { kanji: "宅配", ja: "宅配便", ko: "택배", en: "Parcel" },
+  UTILITY_BILL: { kanji: "払込", ja: "払込票", ko: "공공요금 납부", en: "Bill payment" },
+  TICKET: { kanji: "券", ja: "チケット", ko: "티켓", en: "Ticket" },
 };
 
 /** 길 묻기 방향 → 표지판 라벨과 화살표 회전(위 = 0°) */
-export const DIRECTION_LABEL: Record<Direction, { ja: string; ko: string; rotate: number }> = {
-  straight: { ja: "まっすぐ", ko: "직진", rotate: 0 },
-  right: { ja: "右", ko: "오른쪽", rotate: 90 },
-  back: { ja: "後ろ", ko: "뒤쪽", rotate: 180 },
-  left: { ja: "左", ko: "왼쪽", rotate: -90 },
+export const DIRECTION_LABEL: Record<Direction, { ja: string; ko: string; en: string; rotate: number }> = {
+  straight: { ja: "まっすぐ", ko: "직진", en: "straight ahead", rotate: 0 },
+  right: { ja: "右", ko: "오른쪽", en: "to the right", rotate: 90 },
+  back: { ja: "後ろ", ko: "뒤쪽", en: "behind you", rotate: 180 },
+  left: { ja: "左", ko: "왼쪽", en: "to the left", rotate: -90 },
 };
 
 /** 뒷벽 담배 선반에 보이는 번호 후보 — 지금 선택지에 있는 번호는 빼서 정답이 새지 않게 한다 */

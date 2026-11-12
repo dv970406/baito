@@ -8,6 +8,7 @@
 import Link from "next/link";
 import {
   Badge,
+  CaptionLangToggle,
   Card,
   CtaButton,
   Icon,
@@ -39,6 +40,9 @@ import { cn } from "@/lib/cn";
 import { formatDateJa } from "@/lib/format";
 import { isSpeechRecognitionSupported } from "@/lib/speech";
 import { localYmd } from "@/store/date";
+import { cap, capPair, type CaptionLang } from "@/i18n/caption";
+import { translate } from "@/i18n/messages";
+import { useT } from "@/i18n/useT";
 import { useGameStore } from "@/store/gameStore";
 import {
   selectAvailableSlots,
@@ -124,12 +128,13 @@ export function optionalLockReason(
   config: ShiftConfig,
   rankId: RankId,
   ranks: RankDef[],
+  lang: CaptionLang = "ko",
 ): { ja: string; ko: string } {
   const required = config.requiredRank ? ranks.find((r) => r.id === config.requiredRank) : null;
   if (required && !rankAtLeast(rankId, required.id, ranks)) {
-    return { ja: `${required.ja}から`, ko: `${required.ko}부터 열려요` };
+    return { ja: `${required.ja}から`, ko: translate(lang, "home.lockRank", { rank: cap(required, lang) }) };
   }
-  return { ja: "", ko: `${DAILY_SLOTS.length} 시프트 후 열림` };
+  return { ja: "", ko: translate(lang, "home.lockAfterDaily", { n: DAILY_SLOTS.length }) };
 }
 
 /** 오늘 그 시간대에 끝낸 영수증(가장 최근) */
@@ -181,8 +186,11 @@ interface ShiftRowProps {
 }
 
 function ShiftRow({ slot, state, session, lockReason }: ShiftRowProps) {
+  const { t, lang } = useT();
   const cfg = konbiniShifts[slot];
-  const title = `${cfg.nameKo} · ${cfg.hours}`;
+  const name = capPair(cfg.nameKo, cfg.nameEn, lang);
+  const shiftLabel = t("common.shiftName", { name });
+  const title = `${name} · ${cfg.hours}`;
   const prevSlot = DAILY_SLOTS[DAILY_SLOTS.indexOf(slot) - 1];
 
   if (state === "next") {
@@ -192,25 +200,25 @@ function ShiftRow({ slot, state, session, lockReason }: ShiftRowProps) {
         href={shiftHref(slot)}
         variant="accent"
         padding="md"
-        aria-label={`${cfg.nameKo} 시프트 출근 · ${cfg.hours}`}
+        aria-label={t("home.clockInShift", { name, hours: cfg.hours })}
       >
         <div className="flex items-center gap-3.5">
           <KanjiBadge
             kanji={cfg.kanji}
             tone="ghost"
             size="lg"
-            label={`${cfg.nameKo} 시프트`}
+            label={shiftLabel}
           />
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="font-jp text-pos-option text-brand-ink">
               {title}
             </span>
             <span className="text-caption text-accent-soft">
-              {cfg.descriptionKo}
+              {capPair(cfg.descriptionKo, cfg.descriptionEn, lang)}
             </span>
           </div>
           <span className="shrink-0 rounded-pill bg-surface-raised px-3 py-2 font-jp text-[13px] font-extrabold text-accent">
-            출근
+            {t("home.clockIn")}
           </span>
         </div>
       </Card>
@@ -219,8 +227,8 @@ function ShiftRow({ slot, state, session, lockReason }: ShiftRowProps) {
 
   if (state === "completed") {
     const detail = session
-      ? `완료 · 손님 ${session.served}명 · 최고 콤보 ×${session.maxCombo}`
-      : "완료";
+      ? t("home.doneDetail", { served: session.served, combo: session.maxCombo })
+      : t("common.done");
     return (
       <Card variant="raised" padding="md" data-state="completed">
         <div className="flex items-center gap-3.5">
@@ -228,7 +236,7 @@ function ShiftRow({ slot, state, session, lockReason }: ShiftRowProps) {
             kanji={cfg.kanji}
             tone="perfect"
             size="lg"
-            label={`${cfg.nameKo} 시프트`}
+            label={shiftLabel}
           />
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="font-jp text-pos-option text-ink-muted">
@@ -240,7 +248,7 @@ function ShiftRow({ slot, state, session, lockReason }: ShiftRowProps) {
             name="check"
             size={22}
             strokeWidth={2.5}
-            label="완료"
+            label={t("common.done")}
             className="text-perfect"
           />
         </div>
@@ -263,7 +271,7 @@ function ShiftRow({ slot, state, session, lockReason }: ShiftRowProps) {
           kanji={cfg.kanji}
           tone="sunken"
           size="lg"
-          label={`${cfg.nameKo} 시프트`}
+          label={shiftLabel}
         />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="font-jp text-pos-option text-ink">{title}</span>
@@ -282,9 +290,9 @@ function ShiftRow({ slot, state, session, lockReason }: ShiftRowProps) {
                   {lockReason.ko}
                 </>
               ) : prevSlot ? (
-                `${konbiniShifts[prevSlot].nameKo} 시프트 후 열림`
+                t("home.opensAfter", { name: capPair(konbiniShifts[prevSlot].nameKo, konbiniShifts[prevSlot].nameEn, lang) })
               ) : (
-                "이전 시프트 먼저"
+                t("home.previousFirst")
               )}
             </span>
           ) : (
@@ -292,7 +300,7 @@ function ShiftRow({ slot, state, session, lockReason }: ShiftRowProps) {
           )}
         </div>
         {locked ? (
-          <Icon name="lock" size={20} label="잠김" className="text-ink-faint" />
+          <Icon name="lock" size={20} label={t("common.locked")} className="text-ink-faint" />
         ) : (
           <Skel className="size-5" />
         )}
@@ -307,6 +315,7 @@ export function HomeScreen() {
   const hydrated = useGameStore((s) => s.hydrated);
   const profile = useGameStore((s) => s.profile);
   const sessions = useGameStore((s) => s.sessions);
+  const { t, lang } = useT();
 
   // 날짜는 세이브 복원 뒤(클라이언트)에서만 읽는다 — 서버 렌더와 첫 클라이언트 렌더는 스켈레톤으로 일치
   const ready = hydrated;
@@ -323,7 +332,7 @@ export function HomeScreen() {
   // 추가 시프트(심야): 기본 3개를 끝내고 직급 조건을 채우면 열린다
   const shinyaCfg = konbiniShifts.shinya;
   const shinyaOpen = ready && available.includes("shinya") && !completed.includes("shinya");
-  const shinyaLock = ready && !available.includes("shinya") ? optionalLockReason(shinyaCfg, profile.rank, konbiniRanks) : undefined;
+  const shinyaLock = ready && !available.includes("shinya") ? optionalLockReason(shinyaCfg, profile.rank, konbiniRanks, lang) : undefined;
 
   // 승급 시험(점장 점검) — 주 1회
   const exam = today ? selectExam(profile, konbiniRanks, today) : null;
@@ -347,10 +356,10 @@ export function HomeScreen() {
   const speakingSupported = ready ? isSpeechRecognitionSupported() : true;
   const speakingLocked = !speakingAll;
   const speakingCaption = !speakingSupported
-    ? "이 브라우저는 음성 인식을 지원하지 않아요"
+    ? t("home.speakUnsupported")
     : speakingAll
-      ? "레지의 마이크 버튼으로 말해서 답하면 시급이 더 올라요"
-      : "선배부터 전 시프트 · 夕 시프트에선 지금도 열려요";
+      ? t("home.speakReady")
+      : t("home.speakLocked");
 
   const rowState = (slot: ShiftSlot): ShiftRowState => {
     if (!ready) return "pending";
@@ -371,19 +380,22 @@ export function HomeScreen() {
         className="flex items-start justify-between gap-3 px-screen pt-1"
       >
         <div className="flex min-w-0 flex-col gap-1">
-          <span className="text-[13px] font-medium text-ink-muted">
-            {today ? formatDateJa(new Date()) : <Skel className="h-3.5 w-24" />}
-          </span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-[13px] font-medium text-ink-muted">
+              {today ? formatDateJa(new Date()) : <Skel className="h-3.5 w-24" />}
+            </span>
+            <CaptionLangToggle />
+          </div>
           <h1 className="font-jp text-title text-ink">
             <span lang="ja">{greeting}</span>
             <br />
-            {ready ? `${profile.name} 알바생` : <Skel className="h-7 w-32" />}
+            {ready ? t("home.employee", { name: profile.name }) : <Skel className="h-7 w-32" />}
           </h1>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           <Link
             href={RESUME_HREF}
-            aria-label="직장 바꾸기 · BAITO 이력서"
+            aria-label={t("home.switchJob")}
             className="inline-flex min-h-touch items-center gap-1.5 rounded-pill bg-shell py-1.5 pl-1.5 pr-2.5 font-jp text-label text-brand-ink"
           >
             <span
@@ -403,13 +415,13 @@ export function HomeScreen() {
             ) : (
               <Skel className="h-6 w-8" />
             )}
-            <span className="text-label text-ink-muted">연속 출근</span>
+            <span className="text-label text-ink-muted">{t("common.streak")}</span>
           </div>
         </div>
       </header>
 
       {/* 직급 / 시급 */}
-      <section aria-label="직급과 시급" className="mt-4 px-screen">
+      <section aria-label={t("home.rankAndWage")} className="mt-4 px-screen">
         <Card variant="shell" radius="3xl" padding="md" className="bg-shell">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1">
@@ -424,12 +436,13 @@ export function HomeScreen() {
                       <span lang="ja">{rank.current.ja}</span>
                     </Badge>
                     <span className="font-jp text-money text-shell-ink">
-                      {rank.current.ko}
+                      {cap(rank.current, lang)}
+                      {" · "}
                       {rank.next
                         ? rank.examReady
-                          ? " · 점장 점검 대기"
-                          : ` · 승급까지 ${rank.shiftsToNext}회`
-                        : " · 최고 직급"}
+                          ? t("home.examPending")
+                          : t("home.toPromotion", { n: rank.shiftsToNext })
+                        : t("common.topRank")}
                     </span>
                   </>
                 ) : (
@@ -438,7 +451,7 @@ export function HomeScreen() {
               </div>
             </div>
             <div className="flex shrink-0 flex-col items-end">
-              <span className="text-label text-shell-muted">시급</span>
+              <span className="text-label text-shell-muted">{t("common.wage")}</span>
               {ready ? (
                 <MoneyText
                   yen={profile.wage}
@@ -454,15 +467,15 @@ export function HomeScreen() {
       </section>
 
       {/* 점장 메모 */}
-      <section aria-label="점장 메모" className="mt-4 px-screen">
+      <section aria-label={t("home.managerMemo")} className="mt-4 px-screen">
         {managerLine ? (
-          <ManagerNote ja={managerLine.ja} ko={managerLine.ko} />
+          <ManagerNote ja={managerLine.ja} ko={cap(managerLine, lang)} />
         ) : (
           <div className="flex items-start gap-2.5 rounded-xl bg-tip-soft px-3.5 py-3">
             <KanjiBadge
               kanji="店長"
               tone="tip"
-              label="점장"
+              label={t("common.manager")}
               className="text-[11px]"
             />
             <div className="flex flex-col gap-1.5 pt-0.5">
@@ -475,10 +488,10 @@ export function HomeScreen() {
 
       {/* 시즌 공지 — 이번 달 규칙 변경 */}
       {seasonNotice ? (
-        <section aria-label="이번 달 공지" className="mt-2.5 px-screen">
+        <section aria-label={t("home.monthNotice")} className="mt-2.5 px-screen">
           <Card variant="raised" padding="md" radius="2xl" data-testid="season-notice">
             <div className="flex items-start gap-2.5">
-              <KanjiBadge kanji="告" tone="accent" label="공지" />
+              <KanjiBadge kanji="告" tone="accent" label={t("home.notice")} />
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="font-jp text-label text-accent">
                   今月のお知らせ · <span lang="ja">{seasonNotice.nameJa}</span>
@@ -486,8 +499,10 @@ export function HomeScreen() {
                 <span lang="ja" className="font-jp text-bubble text-ink">
                   {seasonNotice.noticeJa}
                 </span>
-                {seasonNotice.noticeKo ? (
-                  <span className="font-ko text-caption text-ink-muted">{seasonNotice.noticeKo}</span>
+                {seasonNotice.noticeKo || seasonNotice.noticeEn ? (
+                  <span className="font-ko text-caption text-ink-muted">
+                    {capPair(seasonNotice.noticeKo ?? "", seasonNotice.noticeEn, lang)}
+                  </span>
                 ) : null}
               </div>
             </div>
@@ -498,8 +513,8 @@ export function HomeScreen() {
       {/* 오늘 시프트 */}
       <section aria-labelledby="shifts-heading" className="mt-6 px-screen">
         <SectionHeader
-          title={<span id="shifts-heading">오늘 시프트</span>}
-          aside={allDone ? "フルシフト 달성" : "3개 다 하면 フルシフト 보너스"}
+          title={<span id="shifts-heading">{t("home.todayShifts")}</span>}
+          aside={allDone ? t("home.fullShiftDone") : t("home.fullShiftHint")}
         />
         <ul className="mt-3 flex flex-col gap-2.5">
           {SHIFT_SLOTS.map((slot) => (
@@ -522,7 +537,7 @@ export function HomeScreen() {
                 本日は閉店。
               </span>
               <span className="text-caption text-ink-muted">
-                오늘 마감 — 내일 또 봐요
+                {t("home.closedTodayBody")}
               </span>
             </div>
           </Card>
@@ -532,10 +547,10 @@ export function HomeScreen() {
       {/* 단골 · 직급 · 말하기 모드 */}
       <section aria-labelledby="meta-heading" className="mt-6 px-screen pb-6">
         <SectionHeader
-          title={<span id="meta-heading">단골</span>}
-          aside="도감"
+          title={<span id="meta-heading">{t("home.regulars")}</span>}
+          aside={t("home.album")}
           href={REGULARS_HREF}
-          asideLabel="단골 도감으로"
+          asideLabel={t("home.toAlbum")}
         />
         <div className="mt-3 flex flex-col gap-2.5">
           <Card
@@ -543,15 +558,15 @@ export function HomeScreen() {
             href={REGULARS_HREF}
             variant="raised"
             padding="md"
-            aria-label="단골 도감 보기"
+            aria-label={t("home.viewAlbum")}
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex flex-col gap-0.5">
                 <span className="font-jp text-pos-option text-ink">
-                  만난 단골
+                  {t("home.metRegulars")}
                 </span>
                 <span className="text-caption text-ink-muted">
-                  얼굴을 익힌 손님 수
+                  {t("home.metRegularsCaption")}
                 </span>
               </div>
               <span className="font-num text-money text-ink">
@@ -570,35 +585,35 @@ export function HomeScreen() {
               href={EXAM_HREF}
               variant="accent"
               padding="md"
-              aria-label={`점장 점검 시프트 출근 · ${exam.target.ko} 승급`}
+              aria-label={t("home.examCardAria", { rank: cap(exam.target, lang) })}
               data-testid="exam-card"
             >
               <div className="flex items-center gap-3.5">
-                <KanjiBadge kanji="点検" tone="ghost" size="lg" label="점장 점검" className="text-[15px]" />
+                <KanjiBadge kanji="点検" tone="ghost" size="lg" label={t("home.examCheck")} className="text-[15px]" />
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="font-jp text-pos-option text-brand-ink">
-                    <span lang="ja">店長点検</span> · <span lang="ja">{exam.target.ja}</span> {exam.target.ko}
+                    <span lang="ja">店長点検</span> · <span lang="ja">{exam.target.ja}</span> {cap(exam.target, lang)}
                   </span>
                   <span className="text-caption text-accent-soft">
-                    {konbiniShifts[exam.rule.slot].kanji} 시프트 · 콤보 ×{exam.rule.combo} · 이탈 0
+                    {t("home.examRule", { kanji: konbiniShifts[exam.rule.slot].kanji, combo: exam.rule.combo })}
                   </span>
                 </div>
                 <span className="shrink-0 rounded-pill bg-surface-raised px-3 py-2 font-jp text-[13px] font-extrabold text-accent">
-                  출근
+                  {t("home.clockIn")}
                 </span>
               </div>
             </Card>
           ) : exam && exam.ready && exam.takenThisWeek && exam.target ? (
             <Card variant="sunken" dashed padding="md" aria-disabled="true" data-testid="exam-card" data-taken="true">
               <div className="flex items-center gap-3.5">
-                <KanjiBadge kanji="点検" tone="sunken" size="lg" label="점장 점검" className="text-[15px]" />
+                <KanjiBadge kanji="点検" tone="sunken" size="lg" label={t("home.examCheck")} className="text-[15px]" />
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="font-jp text-pos-option text-ink-muted">
-                    <span lang="ja">店長点検</span> · <span lang="ja">{exam.target.ja}</span> {exam.target.ko}
+                    <span lang="ja">店長点検</span> · <span lang="ja">{exam.target.ja}</span> {cap(exam.target, lang)}
                   </span>
                   <span className="inline-flex items-center gap-1 text-caption text-ink-muted">
                     <Icon name="lock" size={14} />
-                    이번 주 점검 완료 · 다음 주 월요일
+                    {t("home.examTaken")}
                   </span>
                 </div>
               </div>
@@ -610,27 +625,27 @@ export function HomeScreen() {
                   <span className="font-jp text-pos-option text-ink">
                     {rank.next ? (
                       <>
-                        다음 직급 <span lang="ja">{rank.next.ja}</span> ·{" "}
-                        {rank.next.ko}
+                        {t("home.nextRank")} <span lang="ja">{rank.next.ja}</span> ·{" "}
+                        {cap(rank.next, lang)}
                       </>
                     ) : (
                       <>
-                        <span lang="ja">{rank.current.ja}</span> · 최고 직급
+                        <span lang="ja">{rank.current.ja}</span> · {t("common.topRank")}
                       </>
                     )}
                   </span>
                   <span className="whitespace-nowrap text-caption text-ink-muted">
                     {ready
                       ? rank.next
-                        ? `${rank.shiftsToNext}회 남음`
-                        : "달성"
+                        ? t("home.remaining", { n: rank.shiftsToNext })
+                        : t("home.achieved")
                       : "—"}
                   </span>
                 </div>
                 <ProgressBar
                   value={ready ? rank.progress : 0}
                   tone="accent"
-                  label="다음 직급까지 진행"
+                  label={t("home.nextRankProgress")}
                 />
               </div>
             </Card>
@@ -654,7 +669,7 @@ export function HomeScreen() {
               </span>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className={cn("font-jp text-pos-option", speakingLocked ? "text-ink-muted" : "text-ink")}>
-                  <span lang="ja">話す</span> · 말하기 모드
+                  <span lang="ja">話す</span> · {t("home.speakingMode")}
                 </span>
                 <span className="inline-flex items-center gap-1 text-caption text-ink-muted">
                   {speakingLocked ? <Icon name="lock" size={14} /> : null}
@@ -676,15 +691,15 @@ export function HomeScreen() {
               variant="primary"
               icon="play"
             >
-              출근하기 · {nextCfg.kanji}
+              {t("home.ctaClockIn")} · {nextCfg.kanji}
             </CtaButton>
           ) : shinyaOpen ? (
             <CtaButton as="link" href={shiftHref("shinya")} variant="primary" icon="play">
-              <span lang="ja">深夜</span> 출근 · {shinyaCfg.kanji}
+              <span lang="ja">深夜</span> {t("home.ctaShinya")} · {shinyaCfg.kanji}
             </CtaButton>
           ) : (
             <CtaButton variant="primary" disabled icon="play">
-              {allDone ? "오늘 마감" : "출근하기"}
+              {allDone ? t("home.closedToday") : t("home.ctaClockIn")}
             </CtaButton>
           )}
         </div>

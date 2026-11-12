@@ -105,16 +105,20 @@ export function formatYen(amount: number): string {
  */
 function fillTotal(template: string, total: number, unit: string): string {
   const num = formatYen(total);
-  return template.replace(/\{total\}(円|엔|えん)?/g, (_match, hasUnit?: string) =>
+  return template.replace(/\{total\}(円|엔|えん| yen)?/g, (_match, hasUnit?: string) =>
     hasUnit ? `${num}${hasUnit}` : `${num}${unit}`,
   );
 }
 
 /** TOTAL 문구의 {total} 치환 등 — 화면에 보일 최종 텍스트 */
-export function renderPhrase(phrase: Phrase, customer: CustomerSpec): { ja: string; ko: string; reading?: string } {
+export function renderPhrase(
+  phrase: Phrase,
+  customer: CustomerSpec,
+): { ja: string; ko: string; en?: string; reading?: string } {
   return {
     ja: fillTotal(phrase.ja, customer.total, "円"),
     ko: fillTotal(phrase.ko, customer.total, "엔"),
+    en: phrase.en ? fillTotal(phrase.en, customer.total, " yen") : undefined,
     reading: phrase.reading ? fillTotal(phrase.reading, customer.total, "えん") : undefined,
   };
 }
@@ -219,8 +223,8 @@ export function wrongTobaccoNumbers(number: string): string[] {
 }
 
 /** 담배 번호 선택지 라벨 "23番" */
-export function tobaccoLabel(number: string): { ja: string; ko: string } {
-  return { ja: `${number}番`, ko: `${number}번` };
+export function tobaccoLabel(number: string): { ja: string; ko: string; en: string } {
+  return { ja: `${number}番`, ko: `${number}번`, en: `No. ${number}` };
 }
 
 /**
@@ -356,7 +360,7 @@ function buildListenOptions(step: QuestionStep, ctx: OptionContext): AnswerOptio
   const others = ctx.rng.shuffle(LISTEN_TARGETS.filter((t) => t !== target)).slice(0, OPTION_COUNT - 1);
   const options: AnswerOption[] = [target, ...others].map((t) => {
     const label = ctx.content.listenTargets[t];
-    return { phraseId: listenId(t), ja: label.ja, ko: label.ko, icon: label.icon, isCorrect: t === target };
+    return { phraseId: listenId(t), ja: label.ja, ko: label.ko, en: label.en, icon: label.icon, isCorrect: t === target };
   });
   return ctx.rng.shuffle(options);
 }

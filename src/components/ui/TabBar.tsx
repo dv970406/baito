@@ -1,6 +1,10 @@
+"use client";
+
+import { useT } from "@/i18n/useT";
 import Link from "next/link";
 import { Icon, type IconName } from "./Icon";
 import { cn } from "@/lib/cn";
+import type { MessageKey } from "@/i18n/messages";
 
 export type TabKey = "shift" | "regulars" | "receipt" | "league";
 
@@ -14,16 +18,16 @@ export interface TabBarProps {
 
 interface TabDef {
   key: TabKey;
-  label: string;
+  label: MessageKey;
   icon: IconName;
   href: string;
 }
 
 const TABS: readonly TabDef[] = [
-  { key: "shift", label: "시프트", icon: "calendar", href: "/konbini" },
-  { key: "regulars", label: "도감", icon: "book", href: "/konbini/regulars" },
-  { key: "receipt", label: "영수증", icon: "receipt", href: "/konbini/receipt" },
-  { key: "league", label: "리그", icon: "trophy", href: "/konbini/league" },
+  { key: "shift", label: "tab.shift", icon: "calendar", href: "/konbini" },
+  { key: "regulars", label: "tab.regulars", icon: "book", href: "/konbini/regulars" },
+  { key: "receipt", label: "tab.receipt", icon: "receipt", href: "/konbini/receipt" },
+  { key: "league", label: "tab.league", icon: "trophy", href: "/konbini/league" },
 ];
 
 /**
@@ -32,9 +36,10 @@ const TABS: readonly TabDef[] = [
  * 패딩 10/12/28, 위쪽 1px 선(shadow-hairline-up).
  */
 export function TabBar({ active, hrefs, className }: TabBarProps) {
+  const { t } = useT();
   return (
     <nav
-      aria-label="주 메뉴"
+      aria-label={t("tab.nav")}
       className={cn(
         "flex items-center justify-around bg-surface-raised px-3 pb-safe-tab pt-2.5 shadow-hairline-up",
         className,
@@ -46,7 +51,7 @@ export function TabBar({ active, hrefs, className }: TabBarProps) {
           <Link
             key={tab.key}
             href={hrefs?.[tab.key] ?? tab.href}
-            aria-label={tab.label}
+            aria-label={t(tab.label)}
             aria-current={isActive ? "page" : undefined}
             className={cn(
               "flex min-h-touch min-w-16 flex-col items-center justify-center gap-1 rounded-lg text-label",
@@ -54,7 +59,7 @@ export function TabBar({ active, hrefs, className }: TabBarProps) {
             )}
           >
             <Icon name={tab.icon} size={22} />
-            {tab.label}
+            {t(tab.label)}
           </Link>
         );
       })}

@@ -269,7 +269,7 @@ describe("ReceiptScreen", () => {
     });
     expect(receiptPngMock).toHaveBeenCalledTimes(1);
     expect(receiptPngMock.mock.calls[0][0]).toBe(LATEST);
-    expect(receiptPngMock.mock.calls[0][3]).toEqual({ day: 12 });
+    expect(receiptPngMock.mock.calls[0][3]).toEqual({ day: 12, lang: "ko" });
     expect(shareFileMock).toHaveBeenCalledTimes(1);
     const [blob, filename, text] = shareFileMock.mock.calls[0] as [Blob, string, string];
     expect(blob.type).toBe("image/png");
@@ -296,7 +296,7 @@ describe("ReceiptScreen", () => {
     await act(async () => {
       fireEvent.click(button);
     });
-    expect(momentPngMock).toHaveBeenCalledWith(LATEST, konbini);
+    expect(momentPngMock).toHaveBeenCalledWith(LATEST, konbini, "ko");
     const [, filename, text] = shareFileMock.mock.calls[0] as [Blob, string, string];
     expect(filename).toBe("baito-moment-20261110.png");
     expect(text).toContain("#BAITO");

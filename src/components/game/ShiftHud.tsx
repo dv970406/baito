@@ -9,6 +9,8 @@ import type { ReactNode } from "react";
 import type { ExamContext, ShiftConfig } from "@/engine/types";
 import { Badge, ComboChip, KanjiBadge, ProgressBar } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { capPair } from "@/i18n/caption";
+import { useT } from "@/i18n/useT";
 import { storeClock } from "./shiftModel";
 
 export interface ShiftHudProps {
@@ -42,21 +44,23 @@ export function ShiftHud({
   maxCombo = 0,
   missed = 0,
 }: ShiftHudProps) {
+  const { t, lang } = useT();
+  const shiftName = t("common.shiftName", { name: capPair(config.nameKo, config.nameEn, lang) });
   return (
     <header className="px-screen">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <KanjiBadge kanji={config.kanji} label={`${config.nameKo} 시프트`} />
+          <KanjiBadge kanji={config.kanji} label={shiftName} />
           <div className="flex flex-col">
-            <span className="font-ko text-caption text-ink-muted">{config.nameKo} 시프트</span>
-            <span className="font-num text-money tabular-nums text-ink" aria-label="매장 시각">
+            <span className="font-ko text-caption text-ink-muted">{shiftName}</span>
+            <span className="font-num text-money tabular-nums text-ink" aria-label={t("hud.storeTime")}>
               {storeClock(config.hours, elapsedRatio)}
             </span>
           </div>
         </div>
         <div className="flex items-center gap-2.5">
           <div className="flex flex-col items-end">
-            <span className="font-ko text-label text-ink-muted">손님</span>
+            <span className="font-ko text-label text-ink-muted">{t("hud.customers")}</span>
             <span className="font-num text-money tabular-nums text-ink">
               {handled}
               <span className="text-ink-muted">/{config.customerCount}</span>
@@ -66,7 +70,7 @@ export function ShiftHud({
           <button
             type="button"
             onClick={onPause}
-            aria-label={paused ? "일시정지 중" : "일시정지"}
+            aria-label={paused ? t("hud.paused") : t("hud.pause")}
             aria-pressed={paused}
             className="inline-flex size-touch items-center justify-center rounded-pill bg-surface-raised text-ink shadow-hairline focus-visible:shadow-focus"
           >
@@ -77,7 +81,7 @@ export function ShiftHud({
           </button>
         </div>
       </div>
-      <ProgressBar value={progress} label="시프트 진행" className="mt-3" />
+      <ProgressBar value={progress} label={t("hud.progress")} className="mt-3" />
       {exam ? <ExamStrip exam={exam} maxCombo={maxCombo} missed={missed} /> : null}
     </header>
   );
@@ -89,16 +93,17 @@ export function ShiftHud({
  * - 이탈 칩: 0 이면 그대로, 한 명이라도 돌아갔으면 irritation(실패) 색
  */
 function ExamStrip({ exam, maxCombo, missed }: { exam: ExamContext; maxCombo: number; missed: number }) {
+  const { t } = useT();
   const comboMet = maxCombo >= exam.comboRequired;
   const failed = missed > 0;
   return (
-    <div role="group" aria-label="점장 점검 조건" data-exam className="mt-2 flex items-center gap-1.5">
-      <Badge tone="tip" size="sm" lang="ja" aria-label="점장 점검 시프트">
+    <div role="group" aria-label={t("hud.examConditions")} data-exam className="mt-2 flex items-center gap-1.5">
+      <Badge tone="tip" size="sm" lang="ja" aria-label={t("hud.examShift")}>
         店長点検
       </Badge>
       <ConditionChip
         tone={comboMet ? "met" : "pending"}
-        label={`콤보 조건 ${exam.comboRequired} 이상 · 현재 최고 ${maxCombo}`}
+        label={t("hud.comboCondition", { required: exam.comboRequired, max: maxCombo })}
       >
         <span lang="ja" className="font-jp">
           コンボ
@@ -110,7 +115,7 @@ function ExamStrip({ exam, maxCombo, missed }: { exam: ExamContext; maxCombo: nu
       </ConditionChip>
       <ConditionChip
         tone={failed ? "failed" : "met"}
-        label={failed ? `손님 이탈 ${missed} · 조건 실패` : "손님 이탈 0"}
+        label={failed ? t("hud.walkoutFailed", { n: missed }) : t("hud.walkoutNone")}
         data-failed={failed ? "true" : undefined}
       >
         <span lang="ja" className="font-jp">

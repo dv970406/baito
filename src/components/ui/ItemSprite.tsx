@@ -1,3 +1,6 @@
+"use client";
+
+import { useT } from "@/i18n/useT";
 import type { CSSProperties } from "react";
 import type { ItemShape, ItemVisual } from "@/engine/types";
 import { cn } from "@/lib/cn";
@@ -23,13 +26,14 @@ const BASE_PX: Record<ItemSpriteSize, number> = { sm: 38, md: 48 };
  * 상품 색은 씬 전용 hex 라 style 로 받는다. role="img" + 상품 이름.
  */
 export function ItemSprite({ visual, name, size = "md", className }: ItemSpriteProps) {
+  const { t } = useT();
   const h = BASE_PX[size];
   const w = Math.round(h * (WIDE[visual.shape] ?? 1));
   const accent = visual.accent ?? visual.color;
   return (
     <div
       role="img"
-      aria-label={name ?? "상품"}
+      aria-label={name ?? t("ui.item")}
       data-shape={visual.shape}
       className={cn("inline-flex flex-col items-center gap-1.5", className)}
     >

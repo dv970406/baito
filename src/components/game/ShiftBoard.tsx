@@ -50,6 +50,8 @@ import {
   tobaccoShelfNumbers,
 } from "./shiftModel";
 import { useShift } from "./useShift";
+import type { MessageKey } from "@/i18n/messages";
+import { useT } from "@/i18n/useT";
 
 export interface ShiftBoardProps {
   content: WorkplaceContent;
@@ -71,10 +73,12 @@ export type SpeechUiState = "hidden" | "locked" | "ready" | "listening";
 /** 음성 인식이 이 시간 안에 끝나지 않으면 버튼으로 돌아간다(ms) */
 const LISTEN_TIMEOUT_MS = 6000;
 
-const SPEECH_NOTE: Record<string, string> = {
-  "not-allowed": "마이크 권한이 필요해요 · 버튼으로 골라 주세요",
-  ambiguous: "もう一度 · 어느 쪽인지 애매해요, 버튼으로 골라도 돼요",
-  default: "もう一度 · 못 알아들었어요, 버튼으로 골라도 돼요",
+/** 인식 실패 안내 — 키만 상태로 들고, 그릴 때 자막 언어로 바꾼다(「もう一度」 머리말은 일본어 그대로) */
+type SpeechNoteKey = "notAllowed" | "ambiguous" | "default";
+const SPEECH_NOTE: Record<SpeechNoteKey, { key: MessageKey; again: boolean }> = {
+  notAllowed: { key: "game.speech.notAllowed", again: false },
+  ambiguous: { key: "game.speech.ambiguous", again: true },
+  default: { key: "game.speech.default", again: true },
 };
 
 /** 마감 오버레이가 보이는 시간(ms). 점장 호출은 한마디를 읽을 시간을 더 준다 */
@@ -151,6 +155,7 @@ export function ShiftBoard({
   exam = null,
 }: ShiftBoardProps) {
   const router = useRouter();
+  const { t } = useT();
   const config = content.shifts[slot];
   const audioEnabled = useGameStore((s) => s.audioEnabled);
   const regularStates = useGameStore((s) => s.profile.regulars);
@@ -183,7 +188,7 @@ export function ShiftBoard({
   const [speechSupported] = useState(() => isSpeechRecognitionSupported());
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
-  const [speechNote, setSpeechNote] = useState<string | null>(null);
+  const [speechNote, setSpeechNote] = useState<SpeechNoteKey | null>(null);
   const listenRef = useRef<ListenSession | null>(null);
   // 방금 답이 음성으로 들어왔으면 TTS 로 다시 읽지 않는다(플레이어가 이미 말했다)
   const spokenAnswerRef = useRef(false);
@@ -340,8 +345,9 @@ export function ShiftBoard({
         answer(match.phraseId, true);
         return;
       }
-      const key = res.error === "not-allowed" ? "not-allowed" : res.transcripts.length > 0 ? "ambiguous" : "default";
-      setSpeechNote(SPEECH_NOTE[key] ?? SPEECH_NOTE.default);
+      const key: SpeechNoteKey =
+        res.error === "not-allowed" ? "notAllowed" : res.transcripts.length > 0 ? "ambiguous" : "default";
+      setSpeechNote(key);
     });
   }, [answer, listening, setPaused, speakingUnlocked, speechSupported, state.options, state.phase]);
 
@@ -502,7 +508,7 @@ export function ShiftBoard({
         onAnswer={handleAnswer}
         speech={speechUi}
         interim={interim}
-        speechNote={speechNote}
+        speechNote={speechNote ? `${SPEECH_NOTE[speechNote].again ? "もう一度 · " : ""}${t(SPEECH_NOTE[speechNote].key)}` : null}
         onSpeak={speak}
       />
 

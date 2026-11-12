@@ -9,6 +9,7 @@ import { useId, useState, type KeyboardEvent } from "react";
 import {
   Avatar,
   Badge,
+  CaptionLangToggle,
   Card,
   CtaButton,
   Icon,
@@ -25,6 +26,8 @@ import type { WorkplaceId } from "@/engine/types";
 import { cn } from "@/lib/cn";
 import { useGameStore } from "@/store/gameStore";
 import { selectRank } from "@/store/selectors";
+import { cap, capPair } from "@/i18n/caption";
+import { useT } from "@/i18n/useT";
 
 /** 직장 카드 타일 아이콘 */
 const WORKPLACE_ICON: Record<WorkplaceId, IconName> = {
@@ -35,6 +38,14 @@ const WORKPLACE_ICON: Record<WorkplaceId, IconName> = {
 };
 
 const KONBINI_HREF = "/konbini";
+
+/** 직장 메타의 영어 자막 (콘텐츠 메타에 영어 필드가 생기면 그쪽으로 옮긴다) */
+const WORKPLACE_EN: Record<WorkplaceId, { name: string; summary: string; hint: string }> = {
+  konbini: { name: "Convenience store", summary: "Orders · heating · bags · payment", hint: "" },
+  hoteru: { name: "Hotel front desk", summary: "Check-in · room guide · complaints", hint: "Apply after reaching store manager at KONBINI" },
+  shokudo: { name: "Diner", summary: "Orders · toppings · allergies · checkout", hint: "Apply after reaching store manager at KONBINI" },
+  kuko: { name: "Airport", summary: "Check-in · baggage · gate guidance", hint: "Opens as a short gig 7 days before your trip" },
+};
 
 /** 스켈레톤 자리표시 막대 (셸 배경용) */
 function Skel({ className }: { className?: string }) {
@@ -59,6 +70,7 @@ interface NameFieldProps {
 
 /** 탭하면 입력창으로 바뀌는 이름. Enter·blur 로 저장, Escape 로 취소 */
 function NameField({ name, ready, onSave }: NameFieldProps) {
+  const { t } = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const inputId = useId();
@@ -87,7 +99,7 @@ function NameField({ name, ready, onSave }: NameFieldProps) {
     return (
       <input
         id={inputId}
-        aria-label="이름"
+        aria-label={t("resume.nameLabel")}
         autoFocus
         value={draft}
         maxLength={20}
@@ -102,7 +114,7 @@ function NameField({ name, ready, onSave }: NameFieldProps) {
   return (
     <button
       type="button"
-      aria-label={`이름 수정 · ${name}`}
+      aria-label={t("resume.editName", { name })}
       onClick={() => {
         setDraft(name);
         setEditing(true);
@@ -137,6 +149,8 @@ function KonbiniCard({
   stepsToTencho,
   progress,
 }: KonbiniCardProps) {
+  const { t, lang } = useT();
+  const name = capPair(meta.nameKo, WORKPLACE_EN[meta.id].name, lang);
   return (
     <Card
       as="link"
@@ -145,7 +159,7 @@ function KonbiniCard({
       radius="4xl"
       padding="lg"
       elevation="press-lg"
-      aria-label={`${meta.code} · ${meta.nameKo} 홈으로`}
+      aria-label={t("resume.toWorkplaceHome", { code: meta.code, name })}
     >
       <div className="flex gap-3.5">
         <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-brand text-brand-ink">
@@ -154,9 +168,9 @@ function KonbiniCard({
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
             <span className="font-jp text-heading text-ink">
-              {meta.code} · {meta.nameKo}
+              {meta.code} · {name}
             </span>
-            <Badge tone="perfect">근무 중</Badge>
+            <Badge tone="perfect">{t("resume.working")}</Badge>
           </div>
           <span className="text-caption text-ink-muted">
             {konbini.storeNameJa} {konbini.storeBranchJa} ·{" "}
@@ -166,14 +180,14 @@ function KonbiniCard({
             <ProgressBar
               value={ready ? progress : 0}
               tone="brand"
-              label="점장까지 진행"
+              label={t("resume.progressToTencho")}
               className="flex-1"
             />
             <span className="whitespace-nowrap text-label text-ink-muted">
               {ready
                 ? stepsToTencho > 0
-                  ? `점장까지 ${stepsToTencho}단계`
-                  : "점장 달성"
+                  ? t("resume.stepsToTencho", { n: stepsToTencho })
+                  : t("resume.tenchoReached")
                 : "…"}
             </span>
           </div>
@@ -194,6 +208,7 @@ export function ResumeScreen() {
   const resetAll = useGameStore((s) => s.resetAll);
 
   const [confirmReset, setConfirmReset] = useState(false);
+  const { t, lang } = useT();
 
   const ready = hydrated;
   const rank = selectRank(profile, konbiniRanks);
@@ -225,30 +240,33 @@ export function ResumeScreen() {
             BAITO
           </span>
         </div>
-        <span className="text-caption font-bold text-shell-muted">
-          履歴書 · 이력서
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-caption font-bold text-shell-muted">
+            履歴書 · {t("resume.header")}
+          </span>
+          <CaptionLangToggle tone="shell" />
+        </div>
       </header>
 
       {/* 프로필 */}
       <section
-        aria-label="이력서"
+        aria-label={t("resume.header")}
         className="mt-5 flex items-center gap-3.5 px-shell"
       >
-        <Avatar name={ready ? profile.name : "알바생"} size="lg" />
+        <Avatar name={ready ? profile.name : t("resume.defaultName")} size="lg" />
         <div className="flex min-w-0 flex-col gap-0.5">
           <NameField name={profile.name} ready={ready} onSave={setName} />
           <span className="text-caption text-shell-muted">
-            東京・神田 거주 알바생 ·{" "}
+            {t("resume.residence", { place: "東京・神田" })} ·{" "}
             {ready ? (
-              `시프트 ${profile.totalShifts}회`
+              t("resume.shiftsCount", { n: profile.totalShifts })
             ) : (
               <Skel className="h-3 w-14" />
             )}
           </span>
         </div>
         <div className="ml-auto flex shrink-0 flex-col items-end">
-          <span className="text-label text-shell-muted">현재 시급</span>
+          <span className="text-label text-shell-muted">{t("resume.currentWage")}</span>
           {ready ? (
             <MoneyText
               yen={profile.wage}
@@ -262,32 +280,32 @@ export function ResumeScreen() {
       </section>
 
       {/* 연속 출근 · 휴가 · 직급 */}
-      <section aria-label="근무 기록" className="mt-4 px-shell">
+      <section aria-label={t("resume.workRecord")} className="mt-4 px-shell">
         <Card variant="shell" radius="3xl" padding="md">
           <div className="grid grid-cols-3 gap-2">
             <div className="flex flex-col gap-0.5">
-              <span className="text-label text-shell-muted">연속 출근</span>
+              <span className="text-label text-shell-muted">{t("common.streak")}</span>
               {ready ? (
                 <span className="font-num text-money-lg text-shell-ink">
                   {profile.streak}
                   <span className="ml-0.5 text-caption font-bold text-shell-muted">
-                    일
+                    {t("resume.unitDays")}
                   </span>
                 </span>
               ) : (
                 <Skel className="h-6 w-10" />
               )}
               <span className="text-micro text-shell-muted">
-                {ready ? `휴가 ${profile.leavesLeft}회 남음` : "휴가 — 남음"}
+                {ready ? t("resume.leavesLeft", { n: profile.leavesLeft }) : t("resume.leavesPending")}
               </span>
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-label text-shell-muted">총 시프트</span>
+              <span className="text-label text-shell-muted">{t("resume.totalShifts")}</span>
               {ready ? (
                 <span className="font-num text-money-lg text-shell-ink">
                   {profile.totalShifts}
                   <span className="ml-0.5 text-caption font-bold text-shell-muted">
-                    회
+                    {t("resume.unitShifts")}
                   </span>
                 </span>
               ) : (
@@ -295,14 +313,14 @@ export function ResumeScreen() {
               )}
               <span className="text-micro text-shell-muted">
                 {ready && rank.next
-                  ? `승급까지 ${rank.shiftsToNext}회`
+                  ? t("resume.toPromotion", { n: rank.shiftsToNext })
                   : ready
-                    ? "최고 직급"
-                    : "승급까지 —"}
+                    ? t("common.topRank")
+                    : t("resume.toPromotionPending")}
               </span>
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-label text-shell-muted">직급</span>
+              <span className="text-label text-shell-muted">{t("resume.rank")}</span>
               {ready ? (
                 <span
                   lang="ja"
@@ -314,7 +332,7 @@ export function ResumeScreen() {
                 <Skel className="h-5 w-12" />
               )}
               <span className="text-micro text-shell-muted">
-                {ready ? rank.current.ko : "—"}
+                {ready ? cap(rank.current, lang) : "—"}
               </span>
             </div>
           </div>
@@ -328,10 +346,10 @@ export function ResumeScreen() {
             id="workplaces-heading"
             className="font-jp text-heading text-shell-ink"
           >
-            バイト先 · 직장
+            バイト先 · {t("resume.workplaces")}
           </h1>
           <span className="text-caption text-shell-muted">
-            {openCount} / {workplaces.length} 근무 중
+            {t("resume.openCount", { open: openCount, total: workplaces.length })}
           </span>
         </div>
         <ul className="mt-3 flex flex-col gap-3">
@@ -341,7 +359,7 @@ export function ResumeScreen() {
                 <KonbiniCard
                   meta={meta}
                   ready={ready}
-                  rankKo={rank.current.ko}
+                  rankKo={cap(rank.current, lang)}
                   stepsToTencho={stepsToTencho}
                   progress={overallProgress}
                 />
@@ -349,12 +367,12 @@ export function ResumeScreen() {
                 <LockedCard
                   variant="shell"
                   icon={WORKPLACE_ICON[meta.id]}
-                  title={`${meta.code} · ${meta.nameKo}`}
-                  caption={meta.summaryKo}
-                  hint={meta.unlockHintKo}
+                  title={`${meta.code} · ${capPair(meta.nameKo, WORKPLACE_EN[meta.id].name, lang)}`}
+                  caption={capPair(meta.summaryKo, WORKPLACE_EN[meta.id].summary, lang)}
+                  hint={capPair(meta.unlockHintKo, WORKPLACE_EN[meta.id].hint, lang)}
                   trailing={
                     meta.status === "travel" ? (
-                      <Badge tone="combo">여행팩</Badge>
+                      <Badge tone="combo">{t("resume.travelPack")}</Badge>
                     ) : undefined
                   }
                 />
@@ -367,10 +385,10 @@ export function ResumeScreen() {
       {/* 하단 CTA + 설정 */}
       <SafeBottom inset="shell" className="mt-8">
         <CtaButton as="link" href={KONBINI_HREF}>
-          KONBINI 출근하기
+          {t("resume.cta", { code: konbini.code })}
         </CtaButton>
         <p className="text-center text-label font-medium tracking-normal text-shell-muted">
-          직장이 바뀌어도 시급·콤보·단골 도감은 이력서에 남습니다
+          {t("resume.note")}
         </p>
         <div className="flex items-center justify-between gap-2">
           <button
@@ -380,7 +398,7 @@ export function ResumeScreen() {
             className="inline-flex min-h-touch items-center gap-1.5 rounded-md px-1 text-caption font-bold text-shell-muted"
           >
             <Icon name="play" size={14} />
-            사운드 {audioEnabled ? "켬" : "끔"}
+            {audioEnabled ? t("resume.soundOn") : t("resume.soundOff")}
           </button>
           {confirmReset ? (
             <span className="inline-flex items-center gap-1">
@@ -392,14 +410,14 @@ export function ResumeScreen() {
                 }}
                 className="inline-flex min-h-touch items-center rounded-md px-2 text-caption font-bold text-irritation-ink"
               >
-                정말 초기화
+                {t("resume.resetConfirm")}
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmReset(false)}
                 className="inline-flex min-h-touch items-center rounded-md px-2 text-caption font-bold text-shell-muted"
               >
-                취소
+                {t("common.cancel")}
               </button>
             </span>
           ) : (
@@ -408,7 +426,7 @@ export function ResumeScreen() {
               onClick={() => setConfirmReset(true)}
               className="inline-flex min-h-touch items-center rounded-md px-1 text-caption text-shell-muted"
             >
-              세이브 초기화
+              {t("resume.reset")}
             </button>
           )}
         </div>

@@ -1,3 +1,6 @@
+"use client";
+
+import { useT } from "@/i18n/useT";
 import { cn } from "@/lib/cn";
 
 export interface IrritationGaugeProps {
@@ -13,12 +16,13 @@ export interface IrritationGaugeProps {
  * role="img" + "짜증 게이지 {value}/{max}".
  */
 export function IrritationGauge({ value, max = 4, className }: IrritationGaugeProps) {
+  const { t } = useT();
   const total = Math.max(0, Math.trunc(max));
   const filled = Math.min(total, Math.max(0, Math.trunc(value)));
   return (
     <div
       role="img"
-      aria-label={`짜증 게이지 ${filled}/${total}`}
+      aria-label={t("ui.irritation", { filled, total })}
       className={cn("inline-flex items-center gap-[5px] rounded-pill bg-surface-raised px-2.5 py-1.5 shadow-hairline", className)}
     >
       {Array.from({ length: total }, (_, i) => (

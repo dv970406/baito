@@ -9,6 +9,9 @@ import { maskJa } from "@/engine/distractor";
 import type { SpeechUiState } from "./ShiftBoard";
 import { Chip, Icon, RegisterDisplay, TimerRing, type PosButtonState } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { cap } from "@/i18n/caption";
+import type { MessageKey } from "@/i18n/messages";
+import { useT } from "@/i18n/useT";
 import { RegisterButton, type RegisterButtonVariant } from "./RegisterButton";
 
 export interface PosPanelProps {
@@ -59,11 +62,11 @@ function variantFor(kind: QuestionKind | null): RegisterButtonVariant {
 }
 
 /** 질문 줄 안내 — 리스닝은 "들은 것", 담배는 "선반 번호", 나머지는 "할 말" */
-function promptFor(kind: QuestionKind | null, retry: boolean): string {
-  if (retry) return "같은 질문을 한 번 더";
-  if (kind === "LISTEN") return "손님이 말한 건?";
-  if (kind === "TOBACCO_PICK") return "선반에서 꺼낼 번호는?";
-  return "손님에게 할 말은?";
+function promptFor(kind: QuestionKind | null, retry: boolean): MessageKey {
+  if (retry) return "pos.retry";
+  if (kind === "LISTEN") return "pos.listen";
+  if (kind === "TOBACCO_PICK") return "pos.tobacco";
+  return "pos.say";
 }
 
 export function PosPanel({
@@ -89,15 +92,16 @@ export function PosPanel({
   onSpeak,
   className,
 }: PosPanelProps) {
+  const { t, lang } = useT();
   const answering = phase === "question";
-  const prompt = promptFor(kind, wrongOnStep > 0 && answering);
+  const prompt = t(promptFor(kind, wrongOnStep > 0 && answering));
   const variant = variantFor(kind);
   // 선택지가 아직 없을 때(enter)도 자리는 유지해 레이아웃이 튀지 않게 한다
   const slots: (AnswerOption | null)[] = options.length > 0 ? options : [null, null, null, null];
 
   return (
     <section
-      aria-label="계산대"
+      aria-label={t("pos.register")}
       className={cn(
         "flex flex-1 flex-col gap-3 rounded-t-panel bg-surface-raised px-4 pb-5 pt-4 shadow-panel-up",
         className,
@@ -124,7 +128,7 @@ export function PosPanel({
         <TimerRing remainingMs={answering ? questionRemainingMs : questionTotalMs} totalMs={questionTotalMs} />
       </div>
 
-      <div role="group" aria-label="선택지" data-variant={variant} className="grid grid-cols-2 gap-2.5">
+      <div role="group" aria-label={t("pos.choices")} data-variant={variant} className="grid grid-cols-2 gap-2.5">
         {slots.map((option, i) =>
           option ? (
             <RegisterButton
@@ -134,7 +138,7 @@ export function PosPanel({
               // 가려진 선택지는 표시할 때만 한자를 〇 로 바꾼다 (말하기 매칭·TTS 는 원문을 쓴다)
               ja={option.masked ? maskJa(option.ja) : option.ja}
               reading={option.reading}
-              ko={option.ko}
+              ko={cap(option, lang)}
               icon={option.icon}
               masked={option.masked}
               showKo={showKo}
@@ -158,11 +162,11 @@ export function PosPanel({
         <div className="flex items-center justify-between gap-2.5">
           <SpeakButton state={speech} interim={interim} disabled={!answering} onSpeak={onSpeak} />
           <div className="flex items-center gap-1.5">
-            <Chip selected={showKana} onClick={onToggleKana} aria-label="선택지 후리가나 표시" lang="ja">
+            <Chip selected={showKana} onClick={onToggleKana} aria-label={t("pos.kanaAria")} lang="ja">
               かな
             </Chip>
-            <Chip selected={showKo} onClick={onToggleKo} aria-label="선택지 한국어 뜻 표시">
-              뜻
+            <Chip selected={showKo} onClick={onToggleKo} aria-label={t("pos.meaningAria")}>
+              {t("pos.meaning")}
             </Chip>
           </div>
         </div>
@@ -183,16 +187,17 @@ interface SpeakButtonProps {
  * 준비되면 accent 알약, 듣는 중엔 펄스 점 + 중간 인식 텍스트.
  */
 function SpeakButton({ state, interim, disabled, onSpeak }: SpeakButtonProps) {
+  const { t } = useT();
   if (state === "hidden") return <span aria-hidden="true" />;
   if (state === "locked") {
     return (
       <span
         aria-disabled="true"
-        title="선배 승급 시 전 시프트에서 해금 · 夕 시프트에선 바로"
+        title={t("pos.speakLockedTitle")}
         className="inline-flex min-h-touch items-center gap-2 rounded-pill border-[1.5px] border-dashed border-border-strong bg-surface px-3.5 font-ko text-[13px] font-bold text-ink-muted"
       >
         <Icon name="mic" size={16} />
-        말하기 · 선배부터
+        {t("pos.speakLocked")}
       </span>
     );
   }
@@ -203,7 +208,7 @@ function SpeakButton({ state, interim, disabled, onSpeak }: SpeakButtonProps) {
       onClick={onSpeak}
       disabled={disabled && !listening}
       aria-pressed={listening}
-      aria-label={listening ? "듣는 중" : "말하기 · 음성으로 답하기"}
+      aria-label={listening ? t("pos.listening") : t("pos.speakAria")}
       className={cn(
         "inline-flex min-h-touch max-w-[70%] items-center gap-2 rounded-pill px-3.5 font-ko text-[13px] font-bold transition-colors",
         listening ? "bg-accent text-brand-ink" : "bg-accent-soft text-accent",
@@ -227,7 +232,7 @@ function SpeakButton({ state, interim, disabled, onSpeak }: SpeakButtonProps) {
           <span lang="ja" className="font-jp">
             話す
           </span>{" "}
-          · 말하기
+          · {t("pos.speak")}
         </span>
       )}
     </button>

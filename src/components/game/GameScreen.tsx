@@ -12,6 +12,8 @@ import type { ExamContext, ItemTag, Regular, ShiftSlot } from "@/engine/types";
 import { konbini } from "@/content";
 import { Card, CtaButton, Screen } from "@/components/ui";
 import { useGameStore } from "@/store/gameStore";
+import { capPair } from "@/i18n/caption";
+import { useT } from "@/i18n/useT";
 import { localYmd } from "@/store/date";
 import { selectAvailableSlots, selectExam, selectUnlockedTags } from "@/store/selectors";
 import { ShiftBoard } from "./ShiftBoard";
@@ -47,8 +49,6 @@ interface Boot {
   speakingUnlocked: boolean;
 }
 
-const SLOT_KO: Record<ShiftSlot, string> = { asa: "아침", hiru: "점심", yoru: "저녁", shinya: "심야" };
-
 export function GameScreen({ slot, seedOverride }: GameScreenProps) {
   const hydrated = useGameStore((s) => s.hydrated);
 
@@ -76,6 +76,7 @@ export function GameScreen({ slot, seedOverride }: GameScreenProps) {
 
 /** 복원 뒤에만 마운트된다 — 시드와 오늘 날짜를 상태 초기화 때 한 번 만든다 */
 function HydratedGame({ slot: requested, seedOverride }: GameScreenProps) {
+  const { t, lang } = useT();
   const [boot] = useState<Boot>(() => {
     const now = new Date();
     const today = localYmd(now);
@@ -113,13 +114,13 @@ function HydratedGame({ slot: requested, seedOverride }: GameScreenProps) {
               店長点検はまだ
             </span>
             <p className="m-0 font-ko text-body text-ink">
-              {boot.examBlocked === "taken" ? "이번 주 점장 점검은 이미 봤어요." : "아직 점장 점검을 볼 수 없어요."}
+              {boot.examBlocked === "taken" ? t("game.examTaken") : t("game.examNotReady")}
             </p>
             <p className="m-0 font-ko text-caption text-ink-muted">
-              {boot.examBlocked === "taken" ? "다음 주 월요일에 다시 볼 수 있어요." : "시프트를 더 채우면 점장이 불러요."}
+              {boot.examBlocked === "taken" ? t("game.examTakenHint") : t("game.examNotReadyHint")}
             </p>
             <CtaButton as="link" href="/konbini" variant="primary" icon="calendar">
-              시프트 표로
+              {t("common.backToShifts")}
             </CtaButton>
           </Card>
         </div>
@@ -138,12 +139,14 @@ function HydratedGame({ slot: requested, seedOverride }: GameScreenProps) {
             <span lang="ja" className="font-jp text-heading text-ink">
               {config.kanji}シフトはまだ
             </span>
-            <p className="m-0 font-ko text-body text-ink">이 시프트는 지금 출근할 수 없어요.</p>
+            <p className="m-0 font-ko text-body text-ink">{t("game.shiftClosed")}</p>
             <p className="m-0 font-ko text-caption text-ink-muted">
-              {first ? `${SLOT_KO[first]} 시프트를 먼저 끝내면 열려요.` : "오늘 시프트는 모두 끝났어요."}
+              {first
+                ? t("game.finishFirst", { name: capPair(konbini.shifts[first].nameKo, konbini.shifts[first].nameEn, lang) })
+                : t("game.allDone")}
             </p>
             <CtaButton as="link" href="/konbini" variant="primary" icon="calendar">
-              시프트 표로
+              {t("common.backToShifts")}
             </CtaButton>
           </Card>
         </div>

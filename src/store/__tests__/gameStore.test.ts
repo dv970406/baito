@@ -104,3 +104,4 @@ describe("normalizeProfile · 구 세이브", () => {
     expect(normalizeProfile(raw).rank).toBe("ippan");
   });
 });
+

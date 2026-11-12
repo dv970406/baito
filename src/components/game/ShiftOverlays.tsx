@@ -8,7 +8,9 @@
  */
 import type { ReactNode } from "react";
 import type { ExamContext, ExamResult, ManagerLine, Season, ShiftConfig, WorkplaceContent } from "@/engine/types";
-import { Badge, CtaButton, KanjiBadge, ManagerNote } from "@/components/ui";
+import { Badge, CaptionLangToggle, CtaButton, KanjiBadge, ManagerNote } from "@/components/ui";
+import { cap, capPair } from "@/i18n/caption";
+import { useT } from "@/i18n/useT";
 import { cn } from "@/lib/cn";
 
 function Backdrop({ children, className, label }: { children: ReactNode; className?: string; label: string }) {
@@ -45,26 +47,29 @@ export interface PreShiftSheetProps {
 }
 
 export function PreShiftSheet({ content, config, ready, onStart, exam = null, season = null }: PreShiftSheetProps) {
+  const { t, lang } = useT();
   const notice = season?.rule && season.noticeJa ? season : null;
+  const shiftName = t("common.shiftName", { name: capPair(config.nameKo, config.nameEn, lang) });
+  const noticeSub = notice ? capPair(notice.noticeKo ?? "", notice.noticeEn, lang) : "";
   return (
-    <Backdrop label={exam ? "점장 점검 준비" : "출근 준비"}>
+    <Backdrop label={exam ? t("overlay.examPrep") : t("overlay.prep")}>
       <Sheet>
         <div className="flex items-center gap-3">
-          <KanjiBadge kanji={config.kanji} size="lg" tone={exam ? "tip" : "accent"} label={`${config.nameKo} 시프트`} />
+          <KanjiBadge kanji={config.kanji} size="lg" tone={exam ? "tip" : "accent"} label={shiftName} />
           <div className="flex min-w-0 flex-col gap-0.5">
             <span lang="ja" className="font-jp text-heading text-ink">
               {exam ? "店長点検" : `${content.storeNameJa} ${content.storeBranchJa}`}
             </span>
             <span className="font-ko text-caption text-ink-muted">
-              {exam ? `점장 점검 · ${config.nameKo} 시프트` : `${config.nameKo} 시프트`} · {config.hours} ·{" "}
+              {exam ? t("overlay.examSub", { name: capPair(config.nameKo, config.nameEn, lang) }) : shiftName} · {config.hours} ·{" "}
               {content.registerLabel}
             </span>
           </div>
         </div>
         <dl className="grid grid-cols-3 gap-2.5">
-          <Fact label="손님" value={`${config.customerCount}名`} />
-          <Fact label="한 질문" value={`${config.questionTimeSec}秒`} />
-          <Fact label="시프트" value={`${Math.round(config.durationSec / 60)}分`} />
+          <Fact label={t("overlay.customers")} value={`${config.customerCount}名`} />
+          <Fact label={t("overlay.perQuestion")} value={`${config.questionTimeSec}秒`} />
+          <Fact label={t("overlay.shift")} value={`${Math.round(config.durationSec / 60)}分`} />
         </dl>
         {exam ? (
           <p className="m-0 flex flex-wrap items-center gap-1.5 font-ko text-caption text-ink" data-exam-rule>
@@ -72,11 +77,12 @@ export function PreShiftSheet({ content, config, ready, onStart, exam = null, se
               合格条件
             </Badge>
             <span>
-              콤보 <span className="font-num font-extrabold">×{exam.comboRequired}</span> 이상 · 손님 이탈 0
+              {t("overlay.examRuleCombo")} <span className="font-num font-extrabold">×{exam.comboRequired}</span>{" "}
+              {t("overlay.examRuleRest")}
             </span>
           </p>
         ) : (
-          <p className="m-0 font-ko text-caption text-ink-muted">{config.descriptionKo}</p>
+          <p className="m-0 font-ko text-caption text-ink-muted">{capPair(config.descriptionKo, config.descriptionEn, lang)}</p>
         )}
         {notice ? (
           <div className="flex items-start gap-2.5 rounded-xl bg-surface-sunken px-3.5 py-3" data-season-notice>
@@ -87,7 +93,7 @@ export function PreShiftSheet({ content, config, ready, onStart, exam = null, se
               <span lang="ja" className="font-jp text-bubble text-ink">
                 {notice.noticeJa}
               </span>
-              {notice.noticeKo ? <span className="font-ko text-caption text-ink-muted">{notice.noticeKo}</span> : null}
+              {noticeSub ? <span className="font-ko text-caption text-ink-muted">{noticeSub}</span> : null}
             </div>
           </div>
         ) : null}
@@ -114,14 +120,18 @@ export interface PauseOverlayProps {
 }
 
 export function PauseOverlay({ onResume, onQuit }: PauseOverlayProps) {
+  const { t } = useT();
   return (
-    <Backdrop label="일시정지">
+    <Backdrop label={t("overlay.pause")}>
       <Sheet>
-        <div className="flex flex-col gap-1">
-          <span lang="ja" className="font-jp text-heading text-ink">
-            休憩中
-          </span>
-          <span className="font-ko text-caption text-ink-muted">손님은 기다리고 있어요. 그만두면 이번 시프트는 기록되지 않아요.</span>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <span lang="ja" className="font-jp text-heading text-ink">
+              休憩中
+            </span>
+            <span className="font-ko text-caption text-ink-muted">{t("overlay.pauseBody")}</span>
+          </div>
+          <CaptionLangToggle className="shrink-0" />
         </div>
         <CtaButton variant="primary" icon="play" onClick={onResume} autoFocus>
           再開
@@ -131,7 +141,7 @@ export function PauseOverlay({ onResume, onQuit }: PauseOverlayProps) {
           onClick={onQuit}
           className="inline-flex min-h-touch w-full items-center justify-center rounded-pill font-jp text-[15px] font-bold text-ink-muted focus-visible:shadow-focus"
         >
-          やめる <span className="ml-1.5 font-ko text-caption font-medium">· 홈으로</span>
+          やめる <span className="ml-1.5 font-ko text-caption font-medium">· {t("common.home")}</span>
         </button>
       </Sheet>
     </Backdrop>
@@ -148,15 +158,16 @@ export interface ShiftEndOverlayProps {
 }
 
 export function ShiftEndOverlay({ endedBy, managerLine, exam = null, onContinue }: ShiftEndOverlayProps) {
+  const { t, lang } = useT();
   const title = endedBy === "manager" ? "店長が来た" : "お疲れさまでした";
   const sub =
     endedBy === "manager"
-      ? "손님 세 명이 연속으로 돌아갔어요. 오늘은 여기까지."
+      ? t("overlay.endManager")
       : endedBy === "time"
-        ? "시간이 다 됐어요. 마감 영수증을 뽑는 중…"
-        : "마지막 손님까지 응대했어요. 마감 영수증을 뽑는 중…";
+        ? t("overlay.endTime")
+        : t("overlay.endCustomers");
   return (
-    <Backdrop label="마감">
+    <Backdrop label={t("overlay.end")}>
       <Sheet>
         <div className="flex flex-col gap-1">
           <span lang="ja" className="font-jp text-heading text-ink" role="status">
@@ -179,13 +190,13 @@ export function ShiftEndOverlay({ endedBy, managerLine, exam = null, onContinue 
               {exam.passed ? "合格" : "不合格"}
             </span>
             <span className="font-ko text-caption text-ink-muted">
-              {exam.passed ? "승급이에요. 명찰이 바뀌어요." : `콤보 ×${exam.comboRequired} 이상 · 이탈 0 이 조건이었어요.`}
+              {exam.passed ? t("overlay.examPass") : t("overlay.examFail", { combo: exam.comboRequired })}
             </span>
           </div>
         ) : null}
-        {managerLine ? <ManagerNote ja={managerLine.ja} ko={managerLine.ko} variant="card" /> : null}
+        {managerLine ? <ManagerNote ja={managerLine.ja} ko={cap(managerLine, lang)} variant="card" /> : null}
         <CtaButton variant="primary" icon="receipt" onClick={onContinue}>
-          영수증 보기
+          {t("overlay.viewReceipt")}
         </CtaButton>
       </Sheet>
     </Backdrop>

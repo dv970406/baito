@@ -8,11 +8,11 @@ import type { CustomerReply, QuestionKind } from "@/engine/types";
 export const konbiniReplies: Record<QuestionKind, CustomerReply[]> = {
   AGE_CHECK: [
     { ja: "はい", ko: "네", en: "Sure." },
-    { ja: "はいはい", ko: "네네" },
+    { ja: "はいはい", ko: "네네", en: "Yeah, yeah." },
     { ja: "押しました", ko: "눌렀어요", en: "Done." },
     { ja: "ああ、これね", ko: "아, 이거요", en: "Oh, this one." },
     { ja: "どこ？……あ、ここか", ko: "어디? …아, 여기구나", en: "Where? Oh, here." },
-    { ja: "毎回これ、面倒だね", ko: "매번 이거, 귀찮네" },
+    { ja: "毎回これ、面倒だね", ko: "매번 이거, 귀찮네", en: "This every time. What a pain." },
     { ja: "もう四十だよ", ko: "벌써 마흔이야", en: "I'm forty, you know." },
     { ja: "はい、押した", ko: "네, 눌렀어", en: "Okay, pressed it." },
   ],
@@ -21,7 +21,7 @@ export const konbiniReplies: Record<QuestionKind, CustomerReply[]> = {
     { ja: "はい、番号ね", ko: "네, 번호요", en: "Right, the number." },
     { ja: "ちょっと待って", ko: "잠깐만요", en: "Hold on a sec." },
     { ja: "番号？ 覚えてないな…", ko: "번호? 기억 안 나는데…", en: "The number? I don't remember..." },
-    { ja: "ああ、あれね、あれ", ko: "아, 그거요, 그거" },
+    { ja: "ああ、あれね、あれ", ko: "아, 그거요, 그거", en: "Ah, that one, that one." },
     { ja: "いつものやつ", ko: "늘 사는 거", en: "The usual." },
     { ja: "はい、言います", ko: "네, 말할게요", en: "Okay, I'll say it." },
   ],
@@ -31,7 +31,7 @@ export const konbiniReplies: Record<QuestionKind, CustomerReply[]> = {
     { ja: "どうも", ko: "고마워요", en: "Thanks." },
     { ja: "正解", ko: "맞아요", en: "Correct." },
     { ja: "お、早いね", ko: "오, 빠르네", en: "Oh, that was quick." },
-    { ja: "ん、それ", ko: "응, 그거" },
+    { ja: "ん、それ", ko: "응, 그거", en: "Mm, that." },
     { ja: "あ、それです", ko: "아, 그거예요", en: "Ah, that's it." },
   ],
   POINT_CARD: [
@@ -52,7 +52,7 @@ export const konbiniReplies: Record<QuestionKind, CustomerReply[]> = {
     { ja: "あ、いらないです", ko: "아, 안 데워도 돼요", en: "No need, thanks." },
     { ja: "軽くでいいです", ko: "살짝만요", en: "Just a little." },
     { ja: "お願い。熱めで", ko: "부탁해요. 뜨겁게", en: "Please. Nice and hot." },
-    { ja: "ん、お願い", ko: "응, 부탁해" },
+    { ja: "ん、お願い", ko: "응, 부탁해", en: "Mm, please." },
   ],
   SEPARATE_BAG: [
     { ja: "別々で", ko: "따로요", en: "Separately, please." },
@@ -80,7 +80,7 @@ export const konbiniReplies: Record<QuestionKind, CustomerReply[]> = {
     { ja: "入るやつで", ko: "들어가는 걸로", en: "Whatever fits." },
     { ja: "一番大きいの", ko: "제일 큰 거", en: "The biggest one." },
     { ja: "任せます", ko: "맡길게요", en: "You choose." },
-    { ja: "小、で", ko: "소, 로요" },
+    { ja: "小、で", ko: "소, 로요", en: "Small, please." },
   ],
   CHOPSTICKS: [
     { ja: "お願いします", ko: "부탁해요", en: "Yes, please." },
@@ -139,7 +139,7 @@ export const konbiniReplies: Record<QuestionKind, CustomerReply[]> = {
   TOTAL: [
     { ja: "はい", ko: "네", en: "Okay." },
     { ja: "じゃあこれで", ko: "그럼 이걸로", en: "Here you go." },
-    { ja: "はいはい", ko: "네네" },
+    { ja: "はいはい", ko: "네네", en: "Yep, yep." },
     { ja: "え、高くない？", ko: "어, 비싼 거 아니에요?", en: "Wait, that's pricey." },
     { ja: "細かいのある……", ko: "잔돈 있나…", en: "Let me find some change..." },
     { ja: "了解", ko: "알겠어요", en: "Got it." },

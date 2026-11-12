@@ -14,6 +14,7 @@ export {
   type KanjiBadgeSize,
 } from "./Badge";
 export { Chip, type ChipProps } from "./Chip";
+export { CaptionLangToggle, type CaptionLangToggleProps } from "./CaptionLangToggle";
 export { PosButton, type PosButtonProps, type PosButtonState } from "./PosButton";
 export { ProgressBar, type ProgressBarProps, type ProgressTone } from "./ProgressBar";
 export { IrritationGauge, type IrritationGaugeProps } from "./IrritationGauge";

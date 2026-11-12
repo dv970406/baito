@@ -14,6 +14,8 @@ import { localYmd } from "@/store/date";
 import { formatDateJa } from "@/lib/format";
 import { Badge, Card, CtaButton, Icon, ManagerNote, MoneyText, Screen, SectionHeader, StatRow, TabBar } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { cap } from "@/i18n/caption";
+import { useT } from "@/i18n/useT";
 
 /* ───────────────────────── 주(週) 계산 ───────────────────────── */
 
@@ -60,16 +62,16 @@ export function isLowerRank(rank: number, total: number): boolean {
  * 하위권일 때 점장이 건네는 한 줄. 시프트 수가 적으면 출근을, 시급이 깎였으면 손님 응대를, 아니면 콤보를 짚는다.
  * 순위가 하위권이 아니거나 내 항목이 없으면 null.
  */
-export function coachingLine(data: LeagueDTO): { ja: string; ko: string } | null {
+export function coachingLine(data: LeagueDTO): { ja: string; ko: string; en: string } | null {
   const me = data.me;
   if (!me || !isLowerRank(me.rank, data.entries.length)) return null;
   if (me.shifts < 3) {
-    return { ja: "来週は朝シフトを一つだけ増やそう。", ko: "다음 주는 아침 시프트 하나만 더" };
+    return { ja: "来週は朝シフトを一つだけ増やそう。", ko: "다음 주는 아침 시프트 하나만 더", en: "Next week, add just one morning shift." };
   }
   if (me.weeklyWageDelta < 0) {
-    return { ja: "客を帰すな。コンボより一人の客だ。", ko: "손님을 돌려보내지 마. 콤보보다 손님 한 명이야" };
+    return { ja: "客を帰すな。コンボより一人の客だ。", ko: "손님을 돌려보내지 마. 콤보보다 손님 한 명이야", en: "Don't send customers away. One customer beats a combo." };
   }
-  return { ja: "コンボを一つ伸ばせば、順位は動く。", ko: "콤보 하나만 더 이으면 순위가 움직여" };
+  return { ja: "コンボを一つ伸ばせば、順位は動く。", ko: "콤보 하나만 더 이으면 순위가 움직여", en: "Stretch your combo by one and the ranking moves." };
 }
 
 /* ───────────────────────── 요청 상태 ───────────────────────── */
@@ -92,6 +94,7 @@ export function LeagueScreen() {
   const profile = useGameStore((s) => s.profile);
   const sessions = useGameStore((s) => s.sessions);
   const syncStatus = useGameStore((s) => s.sync.status);
+  const { t } = useT();
 
   const [fetchState, setFetchState] = useState<LeagueFetch>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -129,7 +132,7 @@ export function LeagueScreen() {
           <h1 lang="ja" className="font-jp text-title text-ink">
             時給リーグ
           </h1>
-          <span className="font-ko text-caption text-ink-muted">이번 주 시급 랭킹</span>
+          <span className="font-ko text-caption text-ink-muted">{t("league.subtitle")}</span>
         </div>
         <span className="flex items-center gap-1 text-[13px] font-bold text-ink-muted">
           <Icon name="calendar" size={16} />
@@ -143,15 +146,15 @@ export function LeagueScreen() {
         {/* 나의 이번 주 — 로컬 영수증 기준. 서버와 무관하게 항상 보인다 */}
         {hydrated ? (
           <Card padding="lg" radius="4xl" data-testid="my-week">
-            <SectionHeader title={<span lang="ja">今週のわたし</span>} aside="이번 주 나의 기록" />
+            <SectionHeader title={<span lang="ja">今週のわたし</span>} aside={t("league.myWeek")} />
             <div className="mt-3 flex flex-col gap-2">
               <StatRow
-                label="시급 변동"
+                label={t("league.wageChange")}
                 value={<MoneyText yen={mine.wageDelta} delta />}
                 tone={mine.wageDelta > 0 ? "perfect" : mine.wageDelta < 0 ? "irritation" : "default"}
               />
-              <StatRow label="시프트" value={`${mine.shifts}회`} />
-              <StatRow label="현재 시급" value={<MoneyText yen={profile.wage} />} size="lg" />
+              <StatRow label={t("league.shifts")} value={t("league.shiftsValue", { n: mine.shifts })} />
+              <StatRow label={t("league.currentWage")} value={<MoneyText yen={profile.wage} />} size="lg" />
             </div>
           </Card>
         ) : (
@@ -159,7 +162,7 @@ export function LeagueScreen() {
         )}
 
         <section className="flex flex-col gap-3">
-          <SectionHeader title={<span lang="ja">ランキング</span>} aside="30명 버킷 · 시급 변동 순" />
+          <SectionHeader title={<span lang="ja">ランキング</span>} aside={t("league.rankingAside")} />
           {fetchState.kind === "loading" ? (
             <RankingSkeleton />
           ) : fetchState.kind === "unavailable" ? (
@@ -176,13 +179,14 @@ export function LeagueScreen() {
 /* ───────────────────────── 순위 목록 ───────────────────────── */
 
 function RankingList({ data }: { data: LeagueDTO }) {
+  const { t, lang } = useT();
   if (data.entries.length === 0) {
     return (
       <Card variant="sunken" padding="lg" className="text-center">
         <p lang="ja" className="font-jp text-bubble text-ink">
           まだ誰もいない
         </p>
-        <p className="mt-1 font-ko text-caption text-ink-muted">아직 아무도 없어요. 첫 시프트를 마치면 순위가 생겨요</p>
+        <p className="mt-1 font-ko text-caption text-ink-muted">{t("league.empty")}</p>
       </Card>
     );
   }
@@ -197,18 +201,19 @@ function RankingList({ data }: { data: LeagueDTO }) {
         </ol>
       </Card>
       {coaching ? (
-        <div data-testid="coaching" role="note" aria-label="점장 코칭">
-          <ManagerNote ja={coaching.ja} ko={coaching.ko} />
+        <div data-testid="coaching" role="note" aria-label={t("league.coaching")}>
+          <ManagerNote ja={coaching.ja} ko={cap(coaching, lang)} />
         </div>
       ) : null}
       {data.me === null ? (
-        <p className="text-center font-ko text-caption text-ink-muted">이번 주 시프트를 마치면 순위에 올라요</p>
+        <p className="text-center font-ko text-caption text-ink-muted">{t("league.notRanked")}</p>
       ) : null}
     </>
   );
 }
 
 function RankingRow({ entry }: { entry: LeagueEntryDTO }) {
+  const { t } = useT();
   const name = entry.name.trim().length > 0 ? entry.name : "名無し";
   return (
     <li
@@ -229,10 +234,10 @@ function RankingRow({ entry }: { entry: LeagueEntryDTO }) {
           <span lang="ja" className="truncate font-jp text-pos-option text-ink">
             {name}
           </span>
-          {entry.isMe ? <Badge tone="accent">나</Badge> : null}
+          {entry.isMe ? <Badge tone="accent">{t("league.me")}</Badge> : null}
         </span>
         <span className="font-ko text-caption text-ink-muted">
-          시프트 {entry.shifts}회 · 시급 <MoneyText yen={entry.wage} className="text-caption font-bold" />
+          {t("league.rowShifts", { n: entry.shifts })} <MoneyText yen={entry.wage} className="text-caption font-bold" />
         </span>
       </span>
       <MoneyText yen={entry.weeklyWageDelta} delta className="shrink-0" />
@@ -242,11 +247,11 @@ function RankingRow({ entry }: { entry: LeagueEntryDTO }) {
 
 /* ───────────────────────── 비어 있는 상태 ───────────────────────── */
 
-const UNAVAILABLE_KO: Record<"unconfigured" | "offline" | "error", string> = {
-  unconfigured: "리그 집계는 서버 연결 후 열려요",
-  offline: "지금은 오프라인이에요. 연결되면 순위를 불러올게요",
-  error: "순위를 불러오지 못했어요. 잠시 뒤 다시 열어 주세요",
-};
+const UNAVAILABLE_KEY = {
+  unconfigured: "league.unavailable.unconfigured",
+  offline: "league.unavailable.offline",
+  error: "league.unavailable.error",
+} as const;
 
 function UnavailableCard({
   reason,
@@ -257,6 +262,7 @@ function UnavailableCard({
   syncStatus: string;
   onRetry: () => void;
 }) {
+  const { t } = useT();
   // 스토어가 이미 "서버 미설정"을 알고 있으면 그 문구를 우선한다
   const effective = syncStatus === "unconfigured" ? "unconfigured" : reason;
   return (
@@ -268,11 +274,11 @@ function UnavailableCard({
         <p lang="ja" className="font-jp text-phrase-lg text-ink">
           準備中
         </p>
-        <p className="font-ko text-caption text-ink-muted">{UNAVAILABLE_KO[effective]}</p>
+        <p className="font-ko text-caption text-ink-muted">{t(UNAVAILABLE_KEY[effective])}</p>
       </div>
       {effective !== "unconfigured" ? (
         <CtaButton variant="onSurface" icon="refresh" onClick={onRetry} className="mt-1 shadow-hairline">
-          다시 불러오기
+          {t("league.retry")}
         </CtaButton>
       ) : null}
     </Card>
@@ -282,8 +288,9 @@ function UnavailableCard({
 /* ───────────────────────── 스켈레톤 ───────────────────────── */
 
 function RankingSkeleton() {
+  const { t } = useT();
   return (
-    <Card padding="none" radius="4xl" aria-busy="true" aria-label="순위 불러오는 중" className="overflow-hidden">
+    <Card padding="none" radius="4xl" aria-busy="true" aria-label={t("league.loadingRanking")} className="overflow-hidden">
       <ul className="flex flex-col divide-y divide-border">
         {[0, 1, 2, 3, 4].map((i) => (
           <li key={i} className="flex min-h-touch items-center gap-3 px-4 py-3">
@@ -301,8 +308,9 @@ function RankingSkeleton() {
 }
 
 function MyWeekSkeleton() {
+  const { t } = useT();
   return (
-    <div aria-busy="true" aria-label="기록 불러오는 중" className="flex flex-col gap-3 rounded-4xl bg-surface-raised p-4 shadow-hairline">
+    <div aria-busy="true" aria-label={t("league.loadingMine")} className="flex flex-col gap-3 rounded-4xl bg-surface-raised p-4 shadow-hairline">
       <span className="h-5 w-1/3 animate-pulse rounded-md bg-surface-sunken motion-reduce:animate-none" />
       <span className="h-4 w-full animate-pulse rounded-md bg-surface-sunken motion-reduce:animate-none" />
       <span className="h-4 w-full animate-pulse rounded-md bg-surface-sunken motion-reduce:animate-none" />

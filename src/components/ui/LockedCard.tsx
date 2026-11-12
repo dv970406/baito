@@ -1,3 +1,6 @@
+"use client";
+
+import { useT } from "@/i18n/useT";
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 import { cn } from "@/lib/cn";
@@ -22,6 +25,7 @@ export interface LockedCardProps {
  * 잠긴 카드(점선 테두리). 도감 그리드에서는 "?" 아바타 세로형, 이력서에서는 아이콘 타일 가로형.
  */
 export function LockedCard({ title, caption, hint, variant = "grid", icon, trailing, className }: LockedCardProps) {
+  const { t } = useT();
   if (variant === "shell") {
     return (
       <div
@@ -36,7 +40,7 @@ export function LockedCard({ title, caption, hint, variant = "grid", icon, trail
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
             <span className="font-jp text-heading text-border-strong">{title}</span>
-            {trailing ?? <Icon name="lock" size={18} label="잠김" className="text-ink-faint" />}
+            {trailing ?? <Icon name="lock" size={18} label={t("common.locked")} className="text-ink-faint" />}
           </div>
           {caption ? <span className="text-caption text-ink-muted">{caption}</span> : null}
           {hint ? <span className="mt-1 text-label text-shell-muted">{hint}</span> : null}

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { M_PLUS_Rounded_1c, Noto_Sans_KR } from "next/font/google";
 import { SaveSync } from "@/store/SaveSync";
+import { DocumentLang } from "@/i18n/DocumentLang";
 import { RegisterSw } from "./RegisterSw";
 import "./globals.css";
 
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full">
         <SaveSync>{children}</SaveSync>
+        <DocumentLang />
         <RegisterSw />
       </body>
     </html>

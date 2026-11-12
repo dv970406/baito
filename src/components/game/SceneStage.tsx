@@ -21,6 +21,8 @@ import type {
 } from "@/engine/types";
 import { Avatar, Badge, Icon, IrritationGauge, ItemSprite, KanjiBadge } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { cap, capPair } from "@/i18n/caption";
+import { useT } from "@/i18n/useT";
 import { CustomerBubble } from "./CustomerBubble";
 import { DIRECTION_LABEL, EVENT_KANJI, GRADE_LABEL, PAYMENT_LABEL, TAG_KANJI } from "./shiftModel";
 
@@ -107,9 +109,13 @@ export function SceneStage({
   tobaccoShelf = [],
   className,
 }: SceneStageProps) {
+  const { t, lang } = useT();
+  // 말풍선 자막: 자막 언어로 고르되, 본문과 같으면(영어 자막 + 관광객 영어 대사) 중복이라 숨긴다
+  const subtitle = bubble ? cap(bubble, lang) : undefined;
+  const bubbleSub = subtitle && subtitle !== bubble?.ja ? subtitle : undefined;
   return (
     <section
-      aria-label="매장"
+      aria-label={t("scene.store")}
       onClick={skippable ? onSkip : undefined}
       className={cn("relative min-h-[280px] shrink-0 overflow-hidden select-none", className)}
     >
@@ -141,17 +147,17 @@ export function SceneStage({
           </Badge>
         ) : null}
         {drunk ? (
-          <Badge tone="combo" size="md" aria-label="취객">
+          <Badge tone="combo" size="md" aria-label={t("scene.drunk")}>
             酔
           </Badge>
         ) : null}
         {tourist ? (
-          <Badge tone="shell" size="md" aria-label="외국인 관광객 · 영어로 말해요">
+          <Badge tone="shell" size="md" aria-label={t("scene.tourist")}>
             EN
           </Badge>
         ) : null}
         {payment ? (
-          <Badge tone="shell" size="md" aria-label={`결제 수단 ${PAYMENT_LABEL[payment].ko}`}>
+          <Badge tone="shell" size="md" aria-label={t("scene.payment", { method: cap(PAYMENT_LABEL[payment], lang) })}>
             <Icon name={PAYMENT_LABEL[payment].icon} size={14} className="mr-1" />
             {PAYMENT_LABEL[payment].ja}
           </Badge>
@@ -170,7 +176,7 @@ export function SceneStage({
             )}
           >
             {GRADE_LABEL[gradeFlash.grade]}
-            {gradeFlash.combo >= 2 ? <span aria-label={`콤보 ${gradeFlash.combo}`}>×{gradeFlash.combo}</span> : null}
+            {gradeFlash.combo >= 2 ? <span aria-label={t("ui.combo", { n: gradeFlash.combo })}>×{gradeFlash.combo}</span> : null}
           </span>
         ) : null}
       </div>
@@ -202,7 +208,7 @@ export function SceneStage({
           {/* 말풍선 — 머리 오른쪽, 화면 오른쪽 여백 12px 까지 */}
           <CustomerBubble
             ja={bubble?.ja ?? ""}
-            ko={bubble?.ko}
+            ko={bubbleSub}
             lang={tourist ? "en" : "ja"}
             drunk={drunk}
             className="absolute left-[calc(50%+41px)] right-3 top-[calc(100%-284px)]"
@@ -220,12 +226,12 @@ export function SceneStage({
       {event && !empty ? (
         <EventSign event={event} direction={direction} />
       ) : (
-        <ul aria-label="카운터 위 상품" className="absolute inset-x-0 bottom-[30px] m-0 flex list-none justify-center gap-3.5 p-0">
+        <ul aria-label={t("scene.counterItems")} className="absolute inset-x-0 bottom-[30px] m-0 flex list-none justify-center gap-3.5 p-0">
           {items.map((item, i) => (
             <li key={`${item.id}-${i}`} className="flex flex-col items-center gap-1">
               <div className="flex min-h-[18px] items-center gap-1">
                 {item.tags.map((tag) => (
-                  <Badge key={tag} tone={TAG_TONE[tag] ?? "muted"} size="sm" aria-label={TAG_KANJI[tag].ko}>
+                  <Badge key={tag} tone={TAG_TONE[tag] ?? "muted"} size="sm" aria-label={cap(TAG_KANJI[tag], lang)}>
                     {TAG_KANJI[tag].kanji}
                   </Badge>
                 ))}
@@ -272,10 +278,11 @@ export function posterHeadline(posterJa: string): string {
 }
 
 function SeasonPoster({ season }: { season: Season }) {
+  const { t, lang } = useT();
   return (
     <div
       role="img"
-      aria-label={`매장 포스터 · ${season.nameKo} · ${season.posterJa}`}
+      aria-label={t("scene.poster", { name: capPair(season.nameKo, season.nameEn, lang), poster: season.posterJa })}
       data-poster
       className="absolute bottom-[124px] right-3 flex h-[64px] max-w-[52px] items-start justify-center overflow-hidden rounded-xs bg-surface-raised px-1 py-1 shadow-hairline"
     >
@@ -293,10 +300,11 @@ function SeasonPoster({ season }: { season: Season }) {
 
 /** 담배 선반 — 왼쪽 벽, 번호 칩 몇 개. 상품은 안 보이고 번호만 보인다(실제 편의점처럼) */
 function TobaccoShelf({ numbers }: { numbers: string[] }) {
+  const { t } = useT();
   return (
     <div
       role="img"
-      aria-label="담배 선반"
+      aria-label={t("scene.tobaccoShelf")}
       data-tobacco-shelf
       className="absolute left-3 top-2 flex h-[76px] w-[62px] flex-col justify-between rounded-xs bg-shell px-1.5 py-1.5"
     >
@@ -321,18 +329,19 @@ function TobaccoShelf({ numbers }: { numbers: string[] }) {
  * 카운터 위 표지. 길 묻기는 「駅」 + 방향 화살표(지도 느낌의 작은 표지판), 그 밖의 이벤트는 한자 1~2자 배지.
  */
 function EventSign({ event, direction }: { event: EventKind; direction: Direction | null }) {
+  const { t, lang } = useT();
   if (event === "DIRECTIONS") {
     const dir = direction ? DIRECTION_LABEL[direction] : null;
     return (
       <div
         role="img"
-        aria-label={dir ? `역은 ${dir.ko}` : "역 방향 표지"}
+        aria-label={dir ? t("scene.stationIs", { dir: cap(dir, lang) }) : t("scene.stationSign")}
         data-event="DIRECTIONS"
         data-direction={direction ?? undefined}
         className="absolute inset-x-0 bottom-[34px] flex justify-center"
       >
         <div className="flex items-center gap-2.5 rounded-lg bg-surface-raised px-3 py-2 shadow-hairline">
-          <KanjiBadge kanji="駅" tone="accent" label="역" />
+          <KanjiBadge kanji="駅" tone="accent" label={t("scene.station")} />
           <span className="h-6 w-px bg-border" aria-hidden="true" />
           <span className="inline-flex size-7 items-center justify-center rounded-md bg-accent-soft text-accent">
             <svg
@@ -355,7 +364,7 @@ function EventSign({ event, direction }: { event: EventKind; direction: Directio
               <span lang="ja" className="font-jp text-caption font-bold text-ink">
                 {dir.ja}
               </span>
-              <span className="font-ko text-micro text-ink-muted">{dir.ko}</span>
+              <span className="font-ko text-micro text-ink-muted">{cap(dir, lang)}</span>
             </span>
           ) : null}
         </div>
@@ -367,7 +376,7 @@ function EventSign({ event, direction }: { event: EventKind; direction: Directio
   return (
     <div
       role="img"
-      aria-label={`${label.ko} 손님`}
+      aria-label={t("scene.eventCustomer", { label: cap(label, lang) })}
       data-event={event}
       className="absolute inset-x-0 bottom-[34px] flex justify-center"
     >
@@ -377,7 +386,7 @@ function EventSign({ event, direction }: { event: EventKind; direction: Directio
           <span lang="ja" className="font-jp text-caption font-bold text-ink">
             {label.ja}
           </span>
-          <span className="font-ko text-micro text-ink-muted">{label.ko}</span>
+          <span className="font-ko text-micro text-ink-muted">{cap(label, lang)}</span>
         </span>
       </div>
     </div>

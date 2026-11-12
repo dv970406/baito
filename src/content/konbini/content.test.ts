@@ -550,4 +550,121 @@ describe("KONBINI 콘텐츠 린트", () => {
       }
     });
   });
+
+  describe("영어 자막 완비", () => {
+    /** 비어 있지 않은 영어 문자열인지 */
+    const filled = (v: string | undefined) => typeof v === "string" && v.trim().length > 0;
+    /** 자막 톤 위반 — 학습 앱 단어·이모지·한글·가나 금지 */
+    const BANNED = /\b(study|studying|lesson|quiz|correct answer)\b/i;
+    const EMOJI = /\p{Extended_Pictographic}/u;
+    const CJK = /[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]/;
+
+    /** 모든 영어 자막을 [위치, 문자열] 로 모은다 */
+    function allEnglish(): [string, string | undefined][] {
+      const out: [string, string | undefined][] = [];
+      out.push(["workplace.nameEn", konbini.nameEn]);
+      for (const p of phrases) out.push([`phrase ${p.id}`, p.en]);
+      for (const i of konbini.items) out.push([`item ${i.id}`, i.en]);
+      for (const r of konbini.regulars) {
+        out.push([`regular ${r.id}.nameEn`, r.nameEn]);
+        out.push([`regular ${r.id}.ticEn`, r.ticEn]);
+        out.push([`regular ${r.id}.roleEn`, r.roleEn]);
+        if (r.unlock.type !== "open") out.push([`regular ${r.id}.unlock.labelEn`, r.unlock.labelEn]);
+        r.lines.forEach((l, n) => out.push([`regular ${r.id}.lines[${n}]`, l.en]));
+        r.firstWords.forEach((w, n) => out.push([`regular ${r.id}.firstWords[${n}]`, w.en]));
+      }
+      konbini.manager.forEach((m, n) => out.push([`manager[${n}]`, m.en]));
+      for (const r of konbini.ranks) out.push([`rank ${r.id}`, r.en]);
+      for (const s of SHIFT_SLOTS) {
+        out.push([`shift ${s}.nameEn`, konbini.shifts[s].nameEn]);
+        out.push([`shift ${s}.descriptionEn`, konbini.shifts[s].descriptionEn]);
+      }
+      for (const s of konbini.seasons) {
+        out.push([`season ${s.month}.nameEn`, s.nameEn]);
+        if (s.noticeJa !== undefined) out.push([`season ${s.month}.noticeEn`, s.noticeEn]);
+      }
+      for (const t of LISTEN_TARGETS) out.push([`listenTarget ${t}`, konbini.listenTargets[t].en]);
+      for (const [label, list] of replyGroups()) list.forEach((r, n) => out.push([`${label}[${n}]`, r.en]));
+      return out;
+    }
+
+    /** 손님 대사 묶음 — 같은 묶음 안에서 en 중복을 검사하는 단위 */
+    function replyGroups(): [string, { ja: string; en?: string }[]][] {
+      const groups: [string, { ja: string; en?: string }[]][] = [];
+      for (const k of QUESTION_KINDS) groups.push([`replies.${k}`, konbini.replies[k] ?? []]);
+      groups.push(["confusedReplies", konbini.confusedReplies]);
+      groups.push(["leaveReplies", konbini.leaveReplies]);
+      groups.push(["hints", Object.values(konbini.hints).filter((h) => h !== undefined)]);
+      for (const t of LISTEN_TARGETS) groups.push([`listenRequests.${t}`, konbini.listenRequests[t] ?? []]);
+      for (const e of EVENT_KINDS) groups.push([`eventPrompts.${e}`, konbini.eventPrompts[e]]);
+      groups.push(["tobaccoRequests", konbini.tobaccoRequests]);
+      const drunk = konbini.drunkReplies;
+      if (drunk) {
+        groups.push(["drunk.reply", drunk.reply]);
+        groups.push(["drunk.confused", drunk.confused]);
+        groups.push(["drunk.leave", drunk.leave]);
+      }
+      return groups;
+    }
+
+    it("모든 영어 자막 필드가 채워져 있다", () => {
+      const missing = allEnglish()
+        .filter(([, v]) => !filled(v))
+        .map(([where]) => where);
+      expect(missing).toEqual([]);
+    });
+
+    it("영어 자막에 학습 앱 단어·이모지·한글·가나가 없다", () => {
+      // 마이크·하나의 대사는 일본어·한국어 로마자 표기만 허용(원문 문자는 금지)
+      const bad = allEnglish()
+        .filter(([, v]) => filled(v) && (BANNED.test(v!) || EMOJI.test(v!) || CJK.test(v!)))
+        .map(([where, v]) => `${where}: ${v}`);
+      expect(bad).toEqual([]);
+    });
+
+    it("TOTAL 영어 문구는 {total} 을 정확히 한 번 갖고 단위를 중복으로 붙이지 않는다", () => {
+      for (const p of phrases.filter((x) => x.kind === "TOTAL")) {
+        const en = p.en ?? "";
+        expect(en.split("{total}").length - 1, p.id).toBe(1);
+        // 엔진이 " yen" 을 붙이므로, yen 은 쓰지 않거나 "{total} yen" 형태만 허용
+        const withoutPlaceholderYen = en.replace("{total} yen", "{total}");
+        expect(/\byen\b|¥|円/i.test(withoutPlaceholderYen), p.id).toBe(false);
+      }
+    });
+
+    it("담배 번호 요구 영어 템플릿은 {n} 을 갖는다", () => {
+      for (const r of konbini.tobaccoRequests) expect(r.en, r.ja).toContain("{n}");
+    });
+
+    it("문구·상품·점장 대사의 영어는 서로 겹치지 않는다", () => {
+      const dupes = (list: (string | undefined)[]) =>
+        list.filter((v, i) => v !== undefined && list.indexOf(v) !== i);
+      expect(dupes(phrases.map((p) => p.en))).toEqual([]);
+      expect(dupes(konbini.items.map((i) => i.en))).toEqual([]);
+      expect(dupes(konbini.manager.map((m) => m.en))).toEqual([]);
+      expect(dupes(konbini.regulars.map((r) => r.nameEn))).toEqual([]);
+      expect(dupes(konbini.ranks.map((r) => r.en))).toEqual([]);
+      expect(dupes(konbini.seasons.map((s) => s.nameEn))).toEqual([]);
+      expect(dupes(SHIFT_SLOTS.map((s) => konbini.shifts[s].nameEn))).toEqual([]);
+    });
+
+    it("같은 묶음 안의 손님 대사는 일본어가 다르면 영어도 다르다", () => {
+      const bad: string[] = [];
+      const check = (label: string, list: { ja: string; en?: string }[]) => {
+        const seen = new Map<string, string>();
+        for (const r of list) {
+          if (r.en === undefined) continue;
+          const prev = seen.get(r.en);
+          if (prev !== undefined && prev !== r.ja) bad.push(`${label}: "${r.en}" (${prev} / ${r.ja})`);
+          seen.set(r.en, r.ja);
+        }
+      };
+      for (const [label, list] of replyGroups()) check(label, list);
+      for (const r of konbini.regulars) {
+        check(`regular ${r.id}.lines`, r.lines);
+        check(`regular ${r.id}.firstWords`, r.firstWords);
+      }
+      expect(bad).toEqual([]);
+    });
+  });
 });

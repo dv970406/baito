@@ -20,6 +20,7 @@ export const konbini: WorkplaceContent = {
   code: "KONBINI",
   nameJa: "コンビニ",
   nameKo: "편의점",
+  nameEn: "Convenience store",
   storeNameJa: "マルマート",
   storeBranchJa: "神田南口店",
   registerLabel: "レジ 02",

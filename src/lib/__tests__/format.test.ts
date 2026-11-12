@@ -54,3 +54,19 @@ describe("날짜/시각", () => {
     expect(formatReceiptDate("2026-11-10Tgarbage", "朝", "07:00–10:00")).toBe("2026/11/10 朝シフト 07:00–10:00");
   });
 });
+
+describe("자막 언어별 날짜", () => {
+  it("formatMonth — ko 「12월」 · en 「December」", async () => {
+    const { formatMonth } = await import("../format");
+    expect(formatMonth(12)).toBe("12월");
+    expect(formatMonth(12, "en")).toBe("December");
+    expect(formatMonth(13, "en")).toBe("13");
+  });
+
+  it("formatShortDate — ko 「11/10」 · en 「Nov 10」", async () => {
+    const { formatShortDate } = await import("../format");
+    const d = new Date(2026, 10, 10);
+    expect(formatShortDate(d)).toBe("11/10");
+    expect(formatShortDate(d, "en")).toBe("Nov 10");
+  });
+});

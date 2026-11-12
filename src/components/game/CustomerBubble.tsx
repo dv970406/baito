@@ -6,10 +6,12 @@
  * - drunk: 취객의 대사는 글자가 미세하게 흔들린다 (Web Animations API, prefers-reduced-motion 이면 생략)
  */
 import { useEffect, useRef } from "react";
+import { useT } from "@/i18n/useT";
 import { cn } from "@/lib/cn";
 
 export interface CustomerBubbleProps {
   ja: string;
+  /** 작은 자막(자막 언어로 고른 번역). 없으면 숨긴다 */
   ko?: string;
   /** 대사 언어 (기본 ja) */
   lang?: "ja" | "en";
@@ -32,6 +34,7 @@ function prefersReducedMotion(): boolean {
 }
 
 export function CustomerBubble({ ja, ko, lang = "ja", drunk = false, tail = "left", className }: CustomerBubbleProps) {
+  const { t } = useT();
   const textRef = useRef<HTMLSpanElement>(null);
   const empty = ja.trim().length === 0;
 
@@ -53,7 +56,7 @@ export function CustomerBubble({ ja, ko, lang = "ja", drunk = false, tail = "lef
       )}
     >
       {empty ? (
-        <span className="text-ink-muted" aria-label="말 없음">
+        <span className="text-ink-muted" aria-label={t("ui.noWords")}>
           …
         </span>
       ) : (

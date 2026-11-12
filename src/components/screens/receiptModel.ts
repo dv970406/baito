@@ -4,7 +4,9 @@
 import type { HardestPhrase, ManagerLine, ManagerMoment, RankDef, ShiftSummary, WorkplaceContent } from "@/engine/types";
 import { LISTEN_PREFIX, TOBACCO_PICK_PREFIX } from "@/engine/distractor";
 import { hashSeed } from "@/engine/rng";
-import { formatYen, formatYenDelta } from "@/lib/format";
+import { formatShortDate, formatYen, formatYenDelta } from "@/lib/format";
+import { cap, type CaptionLang } from "@/i18n/caption";
+import { translate } from "@/i18n/messages";
 
 /** (Perfect+Good)/질문 수 비율로 점장 반응을 가른다 */
 export const MANAGER_GOOD_RATIO = 0.75;
@@ -26,42 +28,50 @@ export function pickManagerLine(content: WorkplaceContent, summary: ShiftSummary
   return pool[hashSeed(summary.playedAt, moment) % pool.length];
 }
 
-/** 공유 문구 — 일본어 한 줄 + 한국어 두 줄 */
-export function buildShareText(content: WorkplaceContent, summary: ShiftSummary): string {
+/** 공유 문구 — 일본어 한 줄 + 자막 언어(ko/en) 두 줄 */
+export function buildShareText(content: WorkplaceContent, summary: ShiftSummary, lang: CaptionLang = "ko"): string {
   const config = content.shifts[summary.slot];
   const lines = [
     `${content.storeNameJa} ${content.storeBranchJa} · ${config.kanji}シフト お疲れさまでした`,
-    `손님 ${summary.served}名 응대 · Perfect ${summary.perfects} · 최고 콤보 ×${summary.maxCombo}`,
-    `오늘 시급 ${formatYen(summary.wageAfter)} (${formatYenDelta(summary.wageDelta)}) #BAITO #${content.code}`,
+    translate(lang, "share.served", { served: summary.served, perfects: summary.perfects, combo: summary.maxCombo }),
+    translate(lang, "share.wage", {
+      wage: formatYen(summary.wageAfter),
+      delta: formatYenDelta(summary.wageDelta),
+      code: content.code,
+    }),
   ];
   return lines.join("\n");
 }
 
 /** 공유 결과 → 안내 문구 (없으면 토스트를 띄우지 않는다) */
-export function shareToast(result: "shared" | "copied" | "unsupported" | "cancelled"): string | null {
+export function shareToast(
+  result: "shared" | "copied" | "unsupported" | "cancelled",
+  lang: CaptionLang = "ko",
+): string | null {
   switch (result) {
     case "shared":
-      return "공유했어요";
+      return translate(lang, "toast.shared");
     case "copied":
-      return "복사됐어요";
+      return translate(lang, "toast.copied");
     case "unsupported":
-      return "이 브라우저에서는 공유할 수 없어요";
+      return translate(lang, "toast.unsupported");
     default:
       return null;
   }
 }
 
-/** 지난 영수증 목록용 짧은 날짜 "11/10" */
-export function shortDate(iso: string): string {
+/** 지난 영수증 목록용 짧은 날짜 — ko "11/10" · en "Nov 10" */
+export function shortDate(iso: string, lang: CaptionLang = "ko"): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso.slice(5, 10).replace("-", "/");
-  return `${d.getMonth() + 1}/${d.getDate()}`;
+  return formatShortDate(d, lang);
 }
 
 /* ───────────────────────── 가장 헷갈린 한마디 ───────────────────────── */
 
 export interface HardestLabel {
   ja: string;
+  /** 자막 — 자막 언어(ko/en)로 고른 번역. en 이 없으면 ko */
   ko: string;
   /** 접객 문구(phrases)에서 찾았으면 그 읽기 */
   reading?: string;
@@ -76,24 +86,28 @@ export function neutralTemplate(text: string): string {
  * hardest 의 표시 문구. 합성 id(담배 번호 매칭 `tobacco.pick.*`, 리스닝 `listen.*`)는 phrases 에 없으므로
  * 고정 라벨을 쓰고, 그 외는 phrases 에서 찾는다. 못 찾으면 null(「なし」 로 그린다).
  */
-export function hardestLabel(content: WorkplaceContent, hardest: HardestPhrase | null): HardestLabel | null {
+export function hardestLabel(
+  content: WorkplaceContent,
+  hardest: HardestPhrase | null,
+  lang: CaptionLang = "ko",
+): HardestLabel | null {
   if (!hardest) return null;
   if (hardest.phraseId.startsWith(TOBACCO_PICK_PREFIX)) {
-    return { ja: "タバコの番号", ko: "담배 번호 매칭" };
+    return { ja: "タバコの番号", ko: translate(lang, "receipt.hardestTobacco") };
   }
   if (hardest.phraseId.startsWith(LISTEN_PREFIX)) {
-    return { ja: "お客さんの一言", ko: "손님 요구 듣기" };
+    return { ja: "お客さんの一言", ko: translate(lang, "receipt.hardestListen") };
   }
   const phrase = content.phrases.find((p) => p.id === hardest.phraseId);
   if (!phrase) return null;
-  return { ja: neutralTemplate(phrase.ja), ko: neutralTemplate(phrase.ko), reading: phrase.reading };
+  return { ja: neutralTemplate(phrase.ja), ko: neutralTemplate(cap(phrase, lang)), reading: phrase.reading };
 }
 
-/** hardest 의 "N번 다른 말 · N번 늦게" 꼬리 문구 (둘 다 0 이면 빈 문자열) */
-export function hardestTail(hardest: HardestPhrase): string {
+/** hardest 의 "N번 다른 말 · N번 늦게" 꼬리 문구(자막 언어) (둘 다 0 이면 빈 문자열) */
+export function hardestTail(hardest: HardestPhrase, lang: CaptionLang = "ko"): string {
   return [
-    hardest.wrongCount > 0 ? `${hardest.wrongCount}번 다른 말` : null,
-    hardest.lateCount > 0 ? `${hardest.lateCount}번 늦게` : null,
+    hardest.wrongCount > 0 ? translate(lang, "receipt.hardestWrong", { n: hardest.wrongCount }) : null,
+    hardest.lateCount > 0 ? translate(lang, "receipt.hardestLate", { n: hardest.lateCount }) : null,
   ]
     .filter(Boolean)
     .join(" · ");

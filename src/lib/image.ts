@@ -10,6 +10,8 @@ import type { PlayerProfile } from "@/shared/player";
 import { SPOKEN_BONUS } from "@/engine/progression";
 import { formatReceiptDate, formatYen, formatYenDelta } from "@/lib/format";
 import { examVerdict, frozenSeconds, hardestLabel, hardestTail, pickManagerLine } from "@/components/screens/receiptModel";
+import { cap, type CaptionLang } from "@/i18n/caption";
+import { translate } from "@/i18n/messages";
 
 /* ───────────────────────── 토큰(昼) ───────────────────────── */
 
@@ -186,6 +188,8 @@ function zigzagBottom(ctx: Ctx, width: number, bottom: number, color: string, to
 export interface ReceiptPngOptions {
   /** 영수증 바닥 "DAY n" */
   day?: number;
+  /** 일본어 라벨 옆 작은 자막 언어 (기본 ko) */
+  lang?: CaptionLang;
 }
 
 interface Row {
@@ -209,27 +213,29 @@ export async function renderReceiptPng(
   if (!probe) return null;
 
   const config = content.shifts[summary.slot];
+  const lang: CaptionLang = options.lang ?? "ko";
+  const tr = (key: Parameters<typeof translate>[1], vars?: Parameters<typeof translate>[2]) => translate(lang, key, vars);
   const W = RECEIPT_WIDTH;
   const PAD = 20;
   const inner = W - PAD * 2;
   const rows: Row[] = [
-    { labelJa: "応対", labelKo: "손님 응대", value: `${summary.served}名 / ${config.customerCount}` },
-    { labelJa: "離脱", labelKo: "놓친 손님", value: `${summary.missed}名`, tone: summary.missed > 0 ? "irritation" : "default" },
-    { labelJa: "最大コンボ", labelKo: "최고 콤보", value: `×${summary.maxCombo}` },
+    { labelJa: "応対", labelKo: tr("receipt.served"), value: `${summary.served}名 / ${config.customerCount}` },
+    { labelJa: "離脱", labelKo: tr("receipt.missed"), value: `${summary.missed}名`, tone: summary.missed > 0 ? "irritation" : "default" },
+    { labelJa: "最大コンボ", labelKo: tr("receipt.maxCombo"), value: `×${summary.maxCombo}` },
   ];
   if (summary.spokens > 0) {
     rows.push({
       labelJa: "声で答えた",
-      labelKo: "말로 답한 응대",
-      value: `${summary.spokens}회 · +¥${summary.spokens * SPOKEN_BONUS}`,
+      labelKo: tr("receipt.spoken"),
+      value: tr("receipt.spokenValue", { n: summary.spokens, bonus: summary.spokens * SPOKEN_BONUS }),
       tone: "perfect",
     });
   }
   if (summary.events > 0) {
-    rows.push({ labelJa: "突発対応", labelKo: "돌발 응대", value: `${summary.events}件` });
+    rows.push({ labelJa: "突発対応", labelKo: tr("receipt.events"), value: `${summary.events}件` });
   }
   const exam = examVerdict(content, summary);
-  const hardest = hardestLabel(content, summary.hardest);
+  const hardest = hardestLabel(content, summary.hardest, lang);
   const regularsMet = summary.regularsMet
     .map((id) => content.regulars.find((r) => r.id === id)?.nameJa)
     .filter((n): n is string => Boolean(n));
@@ -242,12 +248,12 @@ export async function renderReceiptPng(
   const hardestJaLines = hardest ? wrapText(measure, hardest.ja, inner - 24, 3) : [];
   measure.font = font(500, 11, PNG_FONT_KO);
   const hardestKoLines = hardest
-    ? wrapText(measure, [hardest.ko, summary.hardest ? hardestTail(summary.hardest) : ""].filter(Boolean).join(" · "), inner - 24, 2)
+    ? wrapText(measure, [hardest.ko, summary.hardest ? hardestTail(summary.hardest, lang) : ""].filter(Boolean).join(" · "), inner - 24, 2)
     : [];
   measure.font = font(700, 13);
   const managerJaLines = manager ? wrapText(measure, manager.ja, inner - 44, 3) : [];
   measure.font = font(500, 11, PNG_FONT_KO);
-  const managerKoLines = manager ? wrapText(measure, manager.ko, inner - 44, 2) : [];
+  const managerKoLines = manager ? wrapText(measure, cap(manager, lang), inner - 44, 2) : [];
 
   // 내용 높이는 그리면서 정해지므로 넉넉한 캔버스에 그린 뒤 실제 높이로 잘라낸다
   const MAX_H = 1600;
@@ -289,7 +295,7 @@ export async function renderReceiptPng(
     ctx.textAlign = "left";
     ctx.fillStyle = exam.passed ? PNG_COLORS.brand : PNG_COLORS.inkMuted;
     ctx.font = font(800, 11);
-    ctx.fillText("店長点検 · 점장 점검", PAD + 12, y + 10);
+    ctx.fillText(`店長点検 · ${tr("receipt.examTitle")}`, PAD + 12, y + 10);
     ctx.fillStyle = PNG_COLORS.ink;
     ctx.font = font(800, 20);
     ctx.fillText(exam.passed ? "合格" : "不合格", PAD + 12, y + 26);
@@ -299,7 +305,9 @@ export async function renderReceiptPng(
     ctx.fillText(`基準 ×${exam.comboRequired} · 最高 ×${exam.maxCombo} · 離脱 ${exam.missed}`, PAD + inner - 12, y + 28);
     ctx.font = font(500, 11, PNG_FONT_KO);
     ctx.fillText(
-      exam.passed && exam.rank ? `새 명찰 · ${exam.rank.ja} ${exam.rank.ko}` : "다음 주 월요일에 다시",
+      exam.passed && exam.rank
+        ? `${tr("receipt.newTag")} · ${exam.rank.ja} ${cap(exam.rank, lang)}`
+        : tr("receipt.retryNextMondayShort"),
       PAD + inner - 12,
       y + 48,
     );
@@ -367,7 +375,7 @@ export async function renderReceiptPng(
   const wageLabelW = ctx.measureText("今日の時給").width;
   ctx.fillStyle = PNG_COLORS.inkMuted;
   ctx.font = font(500, 11, PNG_FONT_KO);
-  ctx.fillText("오늘 시급", PAD + wageLabelW + 6, y + 11);
+  ctx.fillText(tr("receipt.todayWage"), PAD + wageLabelW + 6, y + 11);
   ctx.textAlign = "right";
   ctx.fillStyle = PNG_COLORS.ink;
   ctx.font = font(800, 26);
@@ -396,7 +404,7 @@ export async function renderReceiptPng(
   ctx.textAlign = "left";
   ctx.fillStyle = PNG_COLORS.combo;
   ctx.font = font(800, 11);
-  ctx.fillText("一番迷った一言 · 오늘 가장 헷갈린 한마디", PAD + 12, y + 10);
+  ctx.fillText(`一番迷った一言 · ${tr("receipt.hardest")}`, PAD + 12, y + 10);
   let ty = y + 26;
   ctx.fillStyle = PNG_COLORS.ink;
   ctx.font = font(800, 16);
@@ -416,7 +424,7 @@ export async function renderReceiptPng(
     ty += 22;
     ctx.fillStyle = PNG_COLORS.inkMuted;
     ctx.font = font(500, 11, PNG_FONT_KO);
-    ctx.fillText("헷갈린 말이 없었어요", PAD + 12, ty);
+    ctx.fillText(tr("receipt.noHardest"), PAD + 12, ty);
   }
   y += Math.max(boxH, 64) + 4;
 
@@ -500,8 +508,12 @@ export async function renderReceiptPng(
  * 「この一瞬」 공유 카드(1080×1350). 가장 헷갈린 한마디를 크게, 한국어는 작게,
  * 「〇秒 固まった」 한 줄과 시급 변화, BAITO 워드마크(텍스트). hardest 가 없으면 null.
  */
-export async function renderFrozenMomentPng(summary: ShiftSummary, content: WorkplaceContent): Promise<Blob | null> {
-  const hardest = hardestLabel(content, summary.hardest);
+export async function renderFrozenMomentPng(
+  summary: ShiftSummary,
+  content: WorkplaceContent,
+  lang: CaptionLang = "ko",
+): Promise<Blob | null> {
+  const hardest = hardestLabel(content, summary.hardest, lang);
   if (!hardest || !summary.hardest) return null;
   const made = createCanvas(FROZEN_WIDTH, FROZEN_HEIGHT);
   if (!made) return null;
@@ -546,7 +558,7 @@ export async function renderFrozenMomentPng(summary: ShiftSummary, content: Work
   y += 40;
   ctx.fillStyle = PNG_COLORS.inkMuted;
   ctx.font = font(500, 24, PNG_FONT_KO);
-  ctx.fillText("오늘 가장 헷갈린 한마디", innerX, y);
+  ctx.fillText(translate(lang, "receipt.hardest"), innerX, y);
   y += 72;
 
   // 일본어 크게(최대 3줄, 길면 글자를 줄인다)
@@ -587,7 +599,9 @@ export async function renderFrozenMomentPng(summary: ShiftSummary, content: Work
   y += 40;
   const frozenJa = seconds !== null ? `${seconds}秒 固まった` : `${summary.hardest.wrongCount + summary.hardest.lateCount}回 迷った`;
   const frozenKo =
-    seconds !== null ? `${seconds}초 동안 얼어붙었다` : `${summary.hardest.wrongCount + summary.hardest.lateCount}번 머뭇거렸다`;
+    seconds !== null
+      ? translate(lang, "receipt.frozenSeconds", { s: seconds })
+      : translate(lang, "receipt.frozenHesitated", { n: summary.hardest.wrongCount + summary.hardest.lateCount });
   ctx.fillStyle = PNG_COLORS.irritationInk;
   ctx.font = font(800, 56);
   ctx.fillText(frozenJa, innerX, y);
@@ -627,7 +641,7 @@ export async function renderFrozenMomentPng(summary: ShiftSummary, content: Work
   ctx.textAlign = "right";
   ctx.globalAlpha = 0.8;
   ctx.font = font(700, 24);
-  ctx.fillText(`${content.code} · 일본 알바 리듬 시뮬`, W - PAD, markY + 22);
+  ctx.fillText(`${content.code} · ${translate(lang, "receipt.tagline")}`, W - PAD, markY + 22);
   ctx.globalAlpha = 1;
 
   return toBlob(canvas);
