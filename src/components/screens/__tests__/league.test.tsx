@@ -6,7 +6,7 @@ import type { ShiftSummary } from "@/engine/types";
 import type { LeagueDTO } from "@/shared/api";
 import { createDefaultProfile, useGameStore } from "@/store/gameStore";
 import { api, ApiError } from "@/store/sync";
-import { LeagueScreen, summarizeWeek, weekStartYmd } from "../LeagueScreen";
+import { LeagueScreen, coachingLine, isLowerRank, summarizeWeek, weekStartYmd } from "../LeagueScreen";
 
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode } & AnchorHTMLAttributes<HTMLAnchorElement>) => (
@@ -43,6 +43,8 @@ function session(playedAt: string, wageDelta: number): ShiftSummary {
     wrongs: 0,
     maxCombo: 8,
     spokens: 0,
+  exam: null,
+  events: 0,
     hardest: null,
     wageDelta,
     wageAfter: 1000 + wageDelta,
@@ -90,6 +92,37 @@ describe("weekStartYmd / summarizeWeek", () => {
       session(new Date(2026, 10, 8, 20).toISOString(), 999), // 지난 주
     ];
     expect(summarizeWeek(sessions, "2026-11-09")).toEqual({ wageDelta: 100, shifts: 2 });
+  });
+});
+
+describe("coachingLine", () => {
+  it("하위권 판정 — 6명 이상은 하위 5위권, 그보다 적으면 하위 25%", () => {
+    expect(isLowerRank(2, 3)).toBe(false);
+    expect(isLowerRank(3, 3)).toBe(true);
+    expect(isLowerRank(1, 1)).toBe(false);
+    expect(isLowerRank(5, 10)).toBe(false);
+    expect(isLowerRank(6, 10)).toBe(true);
+    expect(isLowerRank(30, 30)).toBe(true);
+  });
+
+  it("시프트가 적으면 출근, 시급이 깎였으면 손님, 아니면 콤보를 짚는다 — 학습 어휘 없음", () => {
+    const entries = Array.from({ length: 10 }, (_, i) => ({
+      playerId: `p${i}`,
+      name: `p${i}`,
+      weeklyWageDelta: 100 - i * 10,
+      shifts: 3,
+      wage: 1000,
+      rank: i + 1,
+      isMe: false,
+    }));
+    const me = { ...entries[7], isMe: true };
+    expect(coachingLine({ weekStart: "2026-11-09", entries, me: { ...me, shifts: 1 } })?.ko).toBe("다음 주는 아침 시프트 하나만 더");
+    expect(coachingLine({ weekStart: "2026-11-09", entries, me: { ...me, shifts: 4, weeklyWageDelta: -30 } })?.ko).toContain("손님");
+    const combo = coachingLine({ weekStart: "2026-11-09", entries, me: { ...me, shifts: 4, weeklyWageDelta: 20 } });
+    expect(combo?.ko).toContain("콤보");
+    expect(`${combo?.ja}${combo?.ko}`).not.toMatch(/공부|학습|문제|정답|레벨/);
+    expect(coachingLine({ weekStart: "2026-11-09", entries, me: { ...entries[1], isMe: true } })).toBeNull();
+    expect(coachingLine({ weekStart: "2026-11-09", entries, me: null })).toBeNull();
   });
 });
 
@@ -170,6 +203,31 @@ describe("LeagueScreen", () => {
     expect(within(card).getByText("2회")).toBeTruthy();
     expect(within(card).getByText("¥1,180")).toBeTruthy();
     await screen.findByText("まだ誰もいない");
+  });
+
+  it("하위권이면 점장 코칭 한 줄을 순위 아래 붙인다", async () => {
+    const entries = Array.from({ length: 8 }, (_, i) => ({
+      playerId: `p${i}`,
+      name: `p${i}`,
+      weeklyWageDelta: 80 - i * 10,
+      shifts: i === 6 ? 1 : 3,
+      wage: 1000,
+      rank: i + 1,
+      isMe: i === 6,
+    }));
+    leagueMock.mockResolvedValue({ weekStart: "2026-11-09", entries, me: entries[6] });
+    render(<LeagueScreen />);
+    const coaching = await screen.findByTestId("coaching");
+    expect(within(coaching).getByText("다음 주는 아침 시프트 하나만 더")).toBeTruthy();
+    expect(within(coaching).getByText("来週は朝シフトを一つだけ増やそう。")).toBeTruthy();
+    expect(screen.getAllByRole("listitem")).toHaveLength(8);
+  });
+
+  it("상위권이면 코칭이 없다", async () => {
+    leagueMock.mockResolvedValue(leagueFixture);
+    render(<LeagueScreen />);
+    await screen.findByText("さくら");
+    expect(screen.queryByTestId("coaching")).toBeNull();
   });
 
   it("탭바는 리그 탭이 활성이다", async () => {

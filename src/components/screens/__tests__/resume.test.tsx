@@ -49,7 +49,7 @@ describe("ResumeScreen · 스켈레톤", () => {
 
 describe("ResumeScreen · 복원 후", () => {
   it("이름·시급·총 시프트·연속 출근·휴가·직급을 보여준다", () => {
-    hydrateWith({ name: "성준", wage: 1170, totalShifts: 12, streak: 5, leavesLeft: 1 });
+    hydrateWith({ name: "성준", wage: 1170, totalShifts: 12, rank: "senpai", streak: 5, leavesLeft: 1 });
     render(<ResumeScreen />);
     expect(screen.getByRole("button", { name: "이름 수정 · 성준" })).toBeTruthy();
     expect(screen.getByText("¥1,170")).toBeTruthy();

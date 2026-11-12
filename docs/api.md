@@ -36,6 +36,10 @@ DTO 정의는 `src/shared/api.ts`, `src/shared/player.ts`, `src/engine/types.ts`
 - **`POST /api/sessions` 는 프로필이 먼저 있어야 한다.** `shift_sessions.player_id` 가 `players` 를 참조하고, 서버가 임의의 기본 프로필을 만들면 클라이언트 로컬 상태와 어긋나기 때문에 자동 생성하지 않는다. `409 PROFILE_REQUIRED` 를 받으면 `PUT /api/profile` 후 재시도한다.
 - **`GET /api/league`** 는 현재 주(일본 시간 **월요일 00:00 ~ 다음 월요일 00:00**, `[start, end)`)의 `shift_sessions.played_at` 을 플레이어별로 합산해 `weeklyWageDelta` 내림차순 상위 30명을 돌려준다(동점: 시프트 수 → 현재 시급 → id). `weekStart` 는 그 월요일의 `YYYY-MM-DD`. `me` 는 호출자가 상위 30명 안에 있으면 그 항목(`isMe: true`), 아니면 `null`.
 - `ShiftSummary.spokens`(말하기 모드로 맞힌 수)와 `AnswerLog.spoken` 은 말하기 모드 이전 저장분과의 호환을 위해 생략 시 각각 `0`, `false` 로 채워진다.
+- **`ShiftSummary.slot`** 은 `asa | hiru | yoru | shinya`. `shinya`(심야, 추가 근무)는 마이그레이션 `0002_shinya_slot.sql` 을 적용해야 DB 제약을 통과한다.
+- **`ShiftSummary.exam`** — 승급 시험(점장 점검 시프트)이었으면 `{ rank: RankId, comboRequired: number, passed: boolean }`, 아니면 `null`. `passed` 가 `true` 인 세션을 저장할 때 클라이언트는 `profile.rank` 를 그 `rank` 로, `profile.examWeek` 를 그 주 월요일(`YYYY-MM-DD`)로 올려 `PUT /api/profile` 한다. 서버는 판정하지 않고 저장만 한다.
+- **`ShiftSummary.events`** — 처리한 돌발 이벤트 손님(길 묻기·택배·화장실 …) 수. 정수 ≥ 0, 생략 시 `0`.
+- **`PlayerProfile.rank` / `examWeek`** — 현재 직급과 마지막 시험 주. 예전 세이브에 `rank` 가 없으면 누적 시프트 수로 유도한다(`normalizeProfile`).
 - 입력 스키마(`src/server/schemas.ts`)는 `.strict()` 라서 알 수 없는 필드가 있으면 400 이다. `name` 은 공백 제거 후 1~20자, `wage` 는 0~99999 정수, `answers` 는 최대 2000개.
 
 ## 인증 모델 — 익명 쿠키
@@ -81,7 +85,12 @@ DTO 정의는 `src/shared/api.ts`, `src/shared/player.ts`, `src/engine/types.ts`
 
 ## 마이그레이션 적용
 
-스키마는 `supabase/migrations/0001_init.sql` 하나다. 테이블 `players`, `shift_sessions`, 함수 `weekly_league(timestamptz, timestamptz)`, `players.updated_at` 트리거, RLS 설정이 들어 있다.
+| 파일 | 내용 | 순서 |
+| --- | --- | --- |
+| `supabase/migrations/0001_init.sql` | 테이블 `players`, `shift_sessions`, 함수 `weekly_league(timestamptz, timestamptz)`, `players.updated_at` 트리거, RLS | 1 |
+| `supabase/migrations/0002_shinya_slot.sql` | `shift_sessions.slot` 허용값에 `shinya`(심야) 추가 | 2 — 0001 뒤에 |
+
+두 파일 모두 다시 실행해도 안전하게 작성돼 있다. 0002 를 빼먹으면 심야 시프트 결과 저장(`POST /api/sessions`)이 DB 제약 오류로 500 이 된다.
 
 **방법 A — Supabase CLI**
 
@@ -94,7 +103,7 @@ supabase db push
 
 **방법 B — SQL Editor**
 
-Supabase 대시보드 → **SQL Editor → New query** 에 `supabase/migrations/0001_init.sql` 내용을 붙여넣고 **Run**. 스크립트는 `if not exists` / `create or replace` 라 다시 실행해도 안전하다.
+Supabase 대시보드 → **SQL Editor → New query** 에 `supabase/migrations/0001_init.sql` 내용을 붙여넣고 **Run**, 이어서 `0002_shinya_slot.sql` 을 같은 방법으로 **Run**. 스크립트는 `if not exists` / `create or replace` 라 다시 실행해도 안전하다.
 
 적용 후 확인: Table Editor 에 `players`, `shift_sessions` 가 보이고 두 테이블에 RLS 가 켜져 있어야 한다(정책 0개가 정상).
 

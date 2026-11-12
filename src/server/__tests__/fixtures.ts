@@ -11,6 +11,8 @@ export function makeProfile(overrides: Partial<PlayerProfile> = {}): PlayerProfi
     name: "테스터",
     wage: 1050,
     totalShifts: 3,
+    rank: "ippan",
+    examWeek: null,
     streak: 2,
     lastPlayDate: "2026-11-09",
     leavesLeft: 2,
@@ -24,6 +26,8 @@ export function makeProfile(overrides: Partial<PlayerProfile> = {}): PlayerProfi
       alcohol: 2,
       tobacco: 1,
       fragile_hot: 1,
+      oden: 1,
+      fried: 1,
     },
     perfectedTags: ["hot"],
     regulars: {
@@ -58,6 +62,8 @@ export function makeSummary(overrides: Partial<ShiftSummary> = {}): ShiftSummary
     firstSuccessTags: ["alcohol"],
     regularsMet: ["salaryman"],
     endedBy: "customers",
+    exam: null,
+    events: 0,
     answers: [
       {
         customerIndex: 0,

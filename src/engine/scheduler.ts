@@ -5,9 +5,11 @@
  */
 import { tagSetKey, tagSetOf } from "./cartResolver";
 import { PATIENCE_MAX } from "./scoring";
-import { ITEM_TAGS } from "./types";
+import { DIRECTIONS, EVENT_KINDS, ITEM_TAGS } from "./types";
 import type {
   CustomerSpec,
+  Direction,
+  EventKind,
   Item,
   ItemTag,
   PaymentMethod,
@@ -82,7 +84,16 @@ export interface GenerateContext {
    * 생략하면 config.activeTags 를 그대로 쓴다.
    */
   activeTags?: ItemTag[];
+  /** 플레이 중인 달(1~12). 시즌 한정 상품은 그 달에만 등장한다. 생략하면 시즌 상품 제외 */
+  month?: number;
 }
+
+/** 돌발 이벤트가 열리는 최소 레벨 */
+export const EVENT_MIN_LEVEL = 3;
+/** 외국인 관광객이 오는 최소 레벨 */
+export const TOURIST_MIN_LEVEL = 3;
+/** 취객이 오는 최소 레벨 */
+export const DRUNK_MIN_LEVEL = 4;
 
 export const DEFAULT_REGULAR_CHANCE = 0.35;
 
@@ -108,10 +119,16 @@ export function rollPayment(rng: Rng): PaymentMethod {
   return PAYMENT_DISTRIBUTION[PAYMENT_DISTRIBUTION.length - 1].method;
 }
 
-/** 레벨에 맞고 모든 태그가 활성인 상품만 (태그 없는 상품은 항상 등장 가능) */
-export function eligibleItems(items: Item[], level: number, activeTags: ItemTag[]): Item[] {
+/**
+ * 레벨에 맞고 모든 태그가 활성인 상품만 (태그 없는 상품은 항상 등장 가능).
+ * 시즌 한정 상품(item.season)은 month 가 그 달일 때만.
+ */
+export function eligibleItems(items: Item[], level: number, activeTags: ItemTag[], month?: number): Item[] {
   return items.filter(
-    (item) => item.level <= level && item.tags.every((tag) => activeTags.includes(tag)),
+    (item) =>
+      item.level <= level &&
+      item.tags.every((tag) => activeTags.includes(tag)) &&
+      (item.season === undefined || item.season === month),
   );
 }
 
@@ -181,11 +198,13 @@ function rollAnonymousCart(eligible: Item[], ctx: GenerateContext): Item[] {
  *   (레귤러의 구매 패턴은 "외워지는 것"이 목적이므로 중복 조합 회피·재등장 보장 규칙을 거치지 않는다)
  * - 익명 손님: 가중 상품 선택, pendingRetryTags 우선, 직전 조합 회피, 결제 수단 분포 cash/ic/qr/credit = 4/3/2/1
  * - patienceMax = PATIENCE_MAX + regular.patienceBonus
+ * - Lv3 부터 eventChance 로 돌발 이벤트 손님(물건 없음), touristChance 로 관광객, Lv4 부터 drunkChance 로 취객
+ * - 담배 상품(code)이 있으면 tobaccoNumber 가 채워진다 (번호 매칭 미니게임)
  * 포인트카드 여부는 여기서 정하지 않는다(shift.ts 가 큐를 만들 때 결정).
  */
 export function generateCustomer(ctx: GenerateContext): CustomerSpec {
   const activeTags = ctx.activeTags ?? ctx.config.activeTags;
-  const eligible = eligibleItems(ctx.content.items, ctx.config.level, activeTags);
+  const eligible = eligibleItems(ctx.content.items, ctx.config.level, activeTags, ctx.month);
   if (eligible.length === 0) {
     throw new Error(`generateCustomer: 레벨 ${ctx.config.level} 에서 등장 가능한 상품이 없다`);
   }
@@ -197,6 +216,34 @@ export function generateCustomer(ctx: GenerateContext): CustomerSpec {
     candidates.length > 0 && ctx.rng.chance(ctx.regularChance ?? DEFAULT_REGULAR_CHANCE)
       ? ctx.rng.pick(candidates)
       : null;
+
+  const base = {
+    index: ctx.index,
+    patienceMax: PATIENCE_MAX + (regular?.patienceBonus ?? 0),
+    event: null,
+    direction: null,
+    tobaccoNumber: null,
+    drunk: false,
+    tourist: false,
+  };
+
+  // 돌발 이벤트 손님 — 물건 없이 온다. 레귤러에게는 일어나지 않는다
+  if (!regular && ctx.config.level >= EVENT_MIN_LEVEL && ctx.rng.chance(ctx.config.eventChance ?? 0)) {
+    const event = rollEvent(ctx.rng);
+    return {
+      ...base,
+      regularId: null,
+      items: [],
+      payment: "cash",
+      total: 0,
+      tagSet: [],
+      event,
+      direction: event === "DIRECTIONS" ? ctx.rng.pick([...DIRECTIONS] as Direction[]) : null,
+      // 관광객은 길을 자주 묻는다
+      tourist:
+        ctx.config.level >= TOURIST_MIN_LEVEL && ctx.rng.chance((ctx.config.touristChance ?? 0) * 2),
+    };
+  }
 
   let items: Item[] = [];
   let payment: PaymentMethod;
@@ -213,13 +260,30 @@ export function generateCustomer(ctx: GenerateContext): CustomerSpec {
     items = rollAnonymousCart(eligible, ctx);
   }
 
+  // 익명 손님 수식어 — 취객(Lv4) / 관광객(Lv3). 둘 다는 아니다
+  let drunk = false;
+  let tourist = false;
+  if (!regular) {
+    if (ctx.config.level >= DRUNK_MIN_LEVEL && ctx.rng.chance(ctx.config.drunkChance ?? 0)) drunk = true;
+    else if (ctx.config.level >= TOURIST_MIN_LEVEL && ctx.rng.chance(ctx.config.touristChance ?? 0)) tourist = true;
+  }
+
+  const tobaccoItem = items.find((item) => item.tags.includes("tobacco") && item.code);
+
   return {
-    index: ctx.index,
+    ...base,
     regularId: regular?.id ?? null,
     items,
     payment,
     total: items.reduce((sum, item) => sum + item.price, 0),
-    patienceMax: PATIENCE_MAX + (regular?.patienceBonus ?? 0),
     tagSet: tagSetOf(items),
+    tobaccoNumber: tobaccoItem?.code ?? null,
+    drunk,
+    tourist,
   };
+}
+
+/** 돌발 이벤트 종류를 고른다 (균등) */
+export function rollEvent(rng: Rng): EventKind {
+  return rng.pick([...EVENT_KINDS] as EventKind[]);
 }

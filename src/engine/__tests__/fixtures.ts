@@ -1,6 +1,7 @@
 /**
  * 테스트 전용 최소 콘텐츠. 실제 konbini 데이터와 무관하게 엔진 규칙만 검증한다.
  */
+import { QUESTION_KINDS } from "../types";
 import type {
   CustomerSpec,
   Item,
@@ -9,6 +10,7 @@ import type {
   QuestionKind,
   Regular,
   ShiftConfig,
+  ShiftSlot,
   WorkplaceContent,
   CustomerReply,
 } from "../types";
@@ -98,7 +100,7 @@ const SHIFT_BASE = {
   descriptionKo: "테스트",
 };
 
-export const SHIFTS: Record<"asa" | "hiru" | "yoru", ShiftConfig> = {
+export const SHIFTS: Record<ShiftSlot, ShiftConfig> = {
   asa: { ...SHIFT_BASE, slot: "asa", level: 1, activeTags: ["hot", "cold", "chopsticks", "spoon"] },
   hiru: {
     ...SHIFT_BASE,
@@ -117,21 +119,19 @@ export const SHIFTS: Record<"asa" | "hiru" | "yoru", ShiftConfig> = {
     level: 3,
     activeTags: ["hot", "cold", "chopsticks", "spoon", "straw", "fragile_hot", "alcohol", "tobacco"],
   },
+  shinya: {
+    ...SHIFT_BASE,
+    slot: "shinya",
+    kanji: "深",
+    nameKo: "심야",
+    level: 4,
+    activeTags: ["hot", "cold", "chopsticks", "spoon", "straw", "fragile_hot", "alcohol", "tobacco", "oden", "fried"],
+    requiredRank: "senpai",
+    optional: true,
+  },
 };
 
-const KINDS: QuestionKind[] = [
-  "AGE_CHECK",
-  "POINT_CARD",
-  "WARM",
-  "SEPARATE_BAG",
-  "BAG",
-  "CHOPSTICKS",
-  "SPOON",
-  "STRAW",
-  "TOTAL",
-  "PAY",
-  "CAUTION_HOT",
-];
+const KINDS: readonly QuestionKind[] = QUESTION_KINDS;
 
 const REPLIES = Object.fromEntries(
   KINDS.map((kind) => [kind, [{ ja: `はい(${kind})`, ko: "네" }, { ja: `大丈夫です(${kind})`, ko: "괜찮아요" }]]),
@@ -162,6 +162,29 @@ export const CONTENT: WorkplaceContent = {
   confusedReplies: [{ ja: "へ？", ko: "에?" }, { ja: "いや、あの…", ko: "아니, 그게…" }],
   hints: { WARM: { ja: "温めてください", ko: "데워주세요" } },
   leaveReplies: [{ ja: "もういいです", ko: "됐어요" }],
+  listenRequests: {
+    WARM: [{ ja: "温めて", ko: "데워 줘요", en: "Can you heat it up?" }],
+    CHOPSTICKS: [{ ja: "お箸つけて", ko: "젓가락 넣어 줘요", en: "Chopsticks, please." }],
+    SPOON: [{ ja: "スプーンつけて", ko: "스푼 넣어 줘요" }],
+  },
+  listenTargets: {
+    WARM: { ja: "温め", ko: "데우기", icon: "cup" },
+    BAG: { ja: "袋", ko: "봉투", icon: "bag" },
+    CHOPSTICKS: { ja: "お箸", ko: "젓가락", icon: "chopsticks" },
+    SPOON: { ja: "スプーン", ko: "스푼", icon: "spoon" },
+    STRAW: { ja: "ストロー", ko: "빨대", icon: "straw" },
+  },
+  eventPrompts: {
+    DIRECTIONS: [{ ja: "駅はどっちですか？", ko: "역은 어느 쪽이에요?", en: "Which way is the station?" }],
+    TOILET: [{ ja: "トイレどこですか？", ko: "화장실 어디예요?" }],
+    COPIER: [{ ja: "コピー機、動かないんですけど", ko: "복사기가 안 되는데요" }],
+    ATM: [{ ja: "ATM、使い方が…", ko: "ATM 사용법이…" }],
+    DELIVERY: [{ ja: "これ、送りたいんですけど", ko: "이거 보내고 싶은데요" }],
+    UTILITY_BILL: [{ ja: "電気代、払えますか？", ko: "전기 요금 낼 수 있어요?" }],
+    TICKET: [{ ja: "チケット、ここで取れますか？", ko: "티켓 여기서 뽑을 수 있어요?" }],
+  },
+  tobaccoRequests: [{ ja: "{n}番お願いします", ko: "{n}번 주세요", en: "Number {n}, please." }],
+  seasons: [],
 };
 
 /** 상품 목록으로 손님 하나를 만든다 */
@@ -176,6 +199,11 @@ export function customerOf(
     regularId: null,
     payment: "cash",
     patienceMax: 4,
+    event: null,
+    direction: null,
+    tobaccoNumber: null,
+    drunk: false,
+    tourist: false,
     ...overrides,
     items,
     total: items.reduce((sum, item) => sum + item.price, 0),

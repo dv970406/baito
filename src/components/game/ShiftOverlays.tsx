@@ -7,8 +7,8 @@
  * - ShiftEndOverlay: 마감 — お疲れさまでした, 점장 호출이면 점장 한마디
  */
 import type { ReactNode } from "react";
-import type { ManagerLine, ShiftConfig, WorkplaceContent } from "@/engine/types";
-import { CtaButton, KanjiBadge, ManagerNote } from "@/components/ui";
+import type { ExamContext, ExamResult, ManagerLine, Season, ShiftConfig, WorkplaceContent } from "@/engine/types";
+import { Badge, CtaButton, KanjiBadge, ManagerNote } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
 function Backdrop({ children, className, label }: { children: ReactNode; className?: string; label: string }) {
@@ -38,20 +38,26 @@ export interface PreShiftSheetProps {
   /** 복원이 끝나기 전엔 비활성 */
   ready: boolean;
   onStart: () => void;
+  /** 승급 시험(점장 점검)이면 제목이 店長点検 으로 바뀌고 합격 조건이 보인다 */
+  exam?: ExamContext | null;
+  /** 이번 달 시즌 — 규칙 변경이 있으면 「今月の変更」 한 줄 */
+  season?: Season | null;
 }
 
-export function PreShiftSheet({ content, config, ready, onStart }: PreShiftSheetProps) {
+export function PreShiftSheet({ content, config, ready, onStart, exam = null, season = null }: PreShiftSheetProps) {
+  const notice = season?.rule && season.noticeJa ? season : null;
   return (
-    <Backdrop label="출근 준비">
+    <Backdrop label={exam ? "점장 점검 준비" : "출근 준비"}>
       <Sheet>
         <div className="flex items-center gap-3">
-          <KanjiBadge kanji={config.kanji} size="lg" label={`${config.nameKo} 시프트`} />
+          <KanjiBadge kanji={config.kanji} size="lg" tone={exam ? "tip" : "accent"} label={`${config.nameKo} 시프트`} />
           <div className="flex min-w-0 flex-col gap-0.5">
             <span lang="ja" className="font-jp text-heading text-ink">
-              {content.storeNameJa} {content.storeBranchJa}
+              {exam ? "店長点検" : `${content.storeNameJa} ${content.storeBranchJa}`}
             </span>
             <span className="font-ko text-caption text-ink-muted">
-              {config.nameKo} 시프트 · {config.hours} · {content.registerLabel}
+              {exam ? `점장 점검 · ${config.nameKo} 시프트` : `${config.nameKo} 시프트`} · {config.hours} ·{" "}
+              {content.registerLabel}
             </span>
           </div>
         </div>
@@ -60,7 +66,31 @@ export function PreShiftSheet({ content, config, ready, onStart }: PreShiftSheet
           <Fact label="한 질문" value={`${config.questionTimeSec}秒`} />
           <Fact label="시프트" value={`${Math.round(config.durationSec / 60)}分`} />
         </dl>
-        <p className="m-0 font-ko text-caption text-ink-muted">{config.descriptionKo}</p>
+        {exam ? (
+          <p className="m-0 flex flex-wrap items-center gap-1.5 font-ko text-caption text-ink" data-exam-rule>
+            <Badge tone="tip" size="sm" lang="ja">
+              合格条件
+            </Badge>
+            <span>
+              콤보 <span className="font-num font-extrabold">×{exam.comboRequired}</span> 이상 · 손님 이탈 0
+            </span>
+          </p>
+        ) : (
+          <p className="m-0 font-ko text-caption text-ink-muted">{config.descriptionKo}</p>
+        )}
+        {notice ? (
+          <div className="flex items-start gap-2.5 rounded-xl bg-surface-sunken px-3.5 py-3" data-season-notice>
+            <Badge tone="accent" size="sm" lang="ja">
+              今月の変更
+            </Badge>
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span lang="ja" className="font-jp text-bubble text-ink">
+                {notice.noticeJa}
+              </span>
+              {notice.noticeKo ? <span className="font-ko text-caption text-ink-muted">{notice.noticeKo}</span> : null}
+            </div>
+          </div>
+        ) : null}
         <CtaButton variant="primary" icon="play" onClick={onStart} disabled={!ready} loading={!ready}>
           {ready ? "出勤" : "出勤準備中…"}
         </CtaButton>
@@ -110,12 +140,14 @@ export function PauseOverlay({ onResume, onQuit }: PauseOverlayProps) {
 
 export interface ShiftEndOverlayProps {
   endedBy: "time" | "customers" | "manager";
-  /** 점장 호출일 때 보여줄 한마디 */
+  /** 점장 호출일 때, 또는 시험 결과(exam_pass/exam_fail)일 때 보여줄 한마디 */
   managerLine: ManagerLine | null;
+  /** 승급 시험이었으면 결과 — 합격/불합격 한 줄 */
+  exam?: ExamResult | null;
   onContinue: () => void;
 }
 
-export function ShiftEndOverlay({ endedBy, managerLine, onContinue }: ShiftEndOverlayProps) {
+export function ShiftEndOverlay({ endedBy, managerLine, exam = null, onContinue }: ShiftEndOverlayProps) {
   const title = endedBy === "manager" ? "店長が来た" : "お疲れさまでした";
   const sub =
     endedBy === "manager"
@@ -132,6 +164,25 @@ export function ShiftEndOverlay({ endedBy, managerLine, onContinue }: ShiftEndOv
           </span>
           <span className="font-ko text-caption text-ink-muted">{sub}</span>
         </div>
+        {exam ? (
+          <div
+            className={cn(
+              "flex items-center gap-2.5 rounded-xl px-3.5 py-3",
+              exam.passed ? "bg-perfect-soft" : "bg-irritation-soft",
+            )}
+            data-exam-result={exam.passed ? "pass" : "fail"}
+          >
+            <Badge tone="tip" size="sm" lang="ja">
+              店長点検
+            </Badge>
+            <span lang="ja" className={cn("font-jp text-heading", exam.passed ? "text-perfect-ink" : "text-irritation-ink")}>
+              {exam.passed ? "合格" : "不合格"}
+            </span>
+            <span className="font-ko text-caption text-ink-muted">
+              {exam.passed ? "승급이에요. 명찰이 바뀌어요." : `콤보 ×${exam.comboRequired} 이상 · 이탈 0 이 조건이었어요.`}
+            </span>
+          </div>
+        ) : null}
         {managerLine ? <ManagerNote ja={managerLine.ja} ko={managerLine.ko} variant="card" /> : null}
         <CtaButton variant="primary" icon="receipt" onClick={onContinue}>
           영수증 보기

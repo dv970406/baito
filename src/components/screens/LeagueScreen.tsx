@@ -12,7 +12,7 @@ import { useGameStore } from "@/store/gameStore";
 import { api, ApiError } from "@/store/sync";
 import { localYmd } from "@/store/date";
 import { formatDateJa } from "@/lib/format";
-import { Badge, Card, CtaButton, Icon, MoneyText, Screen, SectionHeader, StatRow, TabBar } from "@/components/ui";
+import { Badge, Card, CtaButton, Icon, ManagerNote, MoneyText, Screen, SectionHeader, StatRow, TabBar } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
 /* ───────────────────────── 주(週) 계산 ───────────────────────── */
@@ -45,6 +45,31 @@ export function summarizeWeek(sessions: ShiftSummary[], weekStart: string) {
     }
   }
   return { wageDelta, shifts };
+}
+
+/* ───────────────────────── 점장 코칭 한 줄 ───────────────────────── */
+
+/** 하위권 판정 — 6명 이상이면 하위 5위권, 그보다 적으면 하위 25% */
+export function isLowerRank(rank: number, total: number): boolean {
+  if (total <= 1) return false;
+  if (total >= 6) return rank > total - 5;
+  return rank > total * 0.75;
+}
+
+/**
+ * 하위권일 때 점장이 건네는 한 줄. 시프트 수가 적으면 출근을, 시급이 깎였으면 손님 응대를, 아니면 콤보를 짚는다.
+ * 순위가 하위권이 아니거나 내 항목이 없으면 null.
+ */
+export function coachingLine(data: LeagueDTO): { ja: string; ko: string } | null {
+  const me = data.me;
+  if (!me || !isLowerRank(me.rank, data.entries.length)) return null;
+  if (me.shifts < 3) {
+    return { ja: "来週は朝シフトを一つだけ増やそう。", ko: "다음 주는 아침 시프트 하나만 더" };
+  }
+  if (me.weeklyWageDelta < 0) {
+    return { ja: "客を帰すな。コンボより一人の客だ。", ko: "손님을 돌려보내지 마. 콤보보다 손님 한 명이야" };
+  }
+  return { ja: "コンボを一つ伸ばせば、順位は動く。", ko: "콤보 하나만 더 이으면 순위가 움직여" };
 }
 
 /* ───────────────────────── 요청 상태 ───────────────────────── */
@@ -161,6 +186,7 @@ function RankingList({ data }: { data: LeagueDTO }) {
       </Card>
     );
   }
+  const coaching = coachingLine(data);
   return (
     <>
       <Card padding="none" radius="4xl" className="overflow-hidden">
@@ -170,6 +196,11 @@ function RankingList({ data }: { data: LeagueDTO }) {
           ))}
         </ol>
       </Card>
+      {coaching ? (
+        <div data-testid="coaching" role="note" aria-label="점장 코칭">
+          <ManagerNote ja={coaching.ja} ko={coaching.ko} />
+        </div>
+      ) : null}
       {data.me === null ? (
         <p className="text-center font-ko text-caption text-ink-muted">이번 주 시프트를 마치면 순위에 올라요</p>
       ) : null}

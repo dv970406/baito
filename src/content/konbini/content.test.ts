@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  DIRECTIONS,
+  EVENT_KINDS,
   ITEM_TAGS,
+  LISTEN_TARGETS,
+  QUESTION_KINDS,
   PAYMENT_METHODS,
   QUESTION_ORDER,
   SHIFT_SLOTS,
@@ -26,8 +30,25 @@ const KIND_MIN_LEVEL: Record<QuestionKind, number> = {
   STRAW: 2,
   CAUTION_HOT: 2,
   AGE_CHECK: 3,
+  TOBACCO_NUMBER: 3,
+  // 합성 선택지(콘텐츠 문구 없음)
+  TOBACCO_PICK: 0,
+  LISTEN: 0,
+  BAG_SIZE: 1,
+  RECEIPT_ASK: 1,
+  ODEN_COUNT: 4,
+  KARASHI: 4,
+  SAUCE: 4,
+  DIRECTIONS: 3,
+  TOILET: 3,
+  COPIER: 3,
+  ATM: 3,
+  DELIVERY: 3,
+  UTILITY_BILL: 3,
+  TICKET: 3,
 };
 
+/** 근접 오답 생성용 카테고리 — 정답·오답 각 2개 이상이어야 하는 것들 */
 const CATEGORIES: PhraseCategory[] = [
   "age",
   "point",
@@ -39,7 +60,12 @@ const CATEGORIES: PhraseCategory[] = [
   "caution",
   "greeting",
   "service",
+  "counter",
 ];
+
+const KANJI = /[一-龯々]/;
+const HEX = /^#[0-9A-Fa-f]{6}$/;
+const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 function duplicates(values: string[]): string[] {
   const seen = new Set<string>();
@@ -52,60 +78,128 @@ function duplicates(values: string[]): string[] {
 }
 
 describe("KONBINI 콘텐츠 린트", () => {
-  const { items, phrases, regulars, manager, ranks, shifts, replies, hints, confusedReplies, leaveReplies } = konbini;
+  const {
+    items,
+    phrases,
+    regulars,
+    manager,
+    ranks,
+    shifts,
+    replies,
+    hints,
+    confusedReplies,
+    leaveReplies,
+    listenRequests,
+    listenTargets,
+    eventPrompts,
+    tobaccoRequests,
+    seasons,
+  } = konbini;
 
   describe("상품", () => {
-    it("28개 이상, id 는 유일", () => {
-      expect(items.length).toBeGreaterThanOrEqual(28);
+    it("60개 이상, id 는 유일", () => {
+      expect(items.length).toBeGreaterThanOrEqual(60);
       expect(duplicates(items.map((i) => i.id))).toEqual([]);
     });
 
-    it("태그는 ITEM_TAGS 에 있는 값만, 중복 없음", () => {
+    it("태그는 ITEM_TAGS 에 있는 값만, 중복 없음, 태그마다 상품 4개 이상", () => {
       for (const item of items) {
         for (const tag of item.tags) expect(ITEM_TAGS).toContain(tag);
         expect(duplicates(item.tags)).toEqual([]);
+      }
+      for (const tag of ITEM_TAGS) {
+        expect(items.filter((i) => i.tags.includes(tag)).length, tag).toBeGreaterThanOrEqual(4);
       }
     });
 
     it("레벨 1 상품은 hot / chopsticks 태그만 쓴다", () => {
       const allowed: ItemTag[] = ["hot", "chopsticks"];
       for (const item of items.filter((i) => i.level === 1)) {
-        for (const tag of item.tags) expect(allowed).toContain(tag);
+        for (const tag of item.tags) expect(allowed, item.id).toContain(tag);
       }
     });
 
-    it("레벨 1~3 에 모두 상품이 있고, 가격은 양의 정수", () => {
-      for (const level of [1, 2, 3]) {
-        expect(items.some((i) => i.level === level)).toBe(true);
+    it("레벨 1~4 에 모두 상품이 있고, 가격은 양의 정수", () => {
+      for (const level of [1, 2, 3, 4]) {
+        expect(items.some((i) => i.level === level), `level ${level}`).toBe(true);
       }
       for (const item of items) {
+        expect(item.level).toBeGreaterThanOrEqual(1);
+        expect(item.level).toBeLessThanOrEqual(4);
         expect(Number.isInteger(item.price)).toBe(true);
         expect(item.price).toBeGreaterThan(0);
       }
     });
 
     it("visual 색은 hex", () => {
-      const hex = /^#[0-9A-Fa-f]{6}$/;
       for (const item of items) {
-        expect(item.visual.color).toMatch(hex);
-        if (item.visual.accent) expect(item.visual.accent).toMatch(hex);
+        expect(item.visual.color).toMatch(HEX);
+        if (item.visual.accent) expect(item.visual.accent).toMatch(HEX);
+      }
+    });
+
+    it("담배는 6종 이상, 각각 선반 번호(1~99)를 갖고 번호는 유일. 담배가 아니면 번호 없음", () => {
+      const tobacco = items.filter((i) => i.tags.includes("tobacco"));
+      expect(tobacco.length).toBeGreaterThanOrEqual(6);
+      for (const item of tobacco) {
+        expect(item.code, item.id).toMatch(/^[1-9][0-9]?$/);
+      }
+      expect(duplicates(tobacco.map((i) => i.code ?? ""))).toEqual([]);
+      expect(items.filter((i) => !i.tags.includes("tobacco") && i.code !== undefined)).toEqual([]);
+    });
+
+    it("오뎅 5종 이상, 튀김·핫스낵 5종 이상 (심야 전용 레벨 4)", () => {
+      const oden = items.filter((i) => i.tags.includes("oden"));
+      const fried = items.filter((i) => i.tags.includes("fried"));
+      expect(oden.length).toBeGreaterThanOrEqual(5);
+      expect(fried.length).toBeGreaterThanOrEqual(5);
+      for (const item of [...oden, ...fried]) expect(item.level, item.id).toBe(4);
+    });
+
+    it("시즌 한정 상품은 12개 이상, 달은 1~12, 모든 달에 하나 이상", () => {
+      const seasonal = items.filter((i) => i.season !== undefined);
+      expect(seasonal.length).toBeGreaterThanOrEqual(12);
+      for (const item of seasonal) {
+        expect(Number.isInteger(item.season), item.id).toBe(true);
+        expect(item.season, item.id).toBeGreaterThanOrEqual(1);
+        expect(item.season, item.id).toBeLessThanOrEqual(12);
+      }
+      for (const month of MONTHS) {
+        expect(seasonal.some((i) => i.season === month), `${month}월`).toBe(true);
+      }
+    });
+
+    it("연중 상품만으로도 모든 시프트에서 손님을 만들 수 있다 (시즌 상품 제외 시 활성 태그마다 1개 이상)", () => {
+      const yearRound = items.filter((i) => i.season === undefined);
+      for (const slot of SHIFT_SLOTS) {
+        const config = shifts[slot];
+        for (const tag of config.activeTags) {
+          const ok = yearRound.some(
+            (i) => i.level <= config.level && i.tags.includes(tag) && i.tags.every((t) => config.activeTags.includes(t)),
+          );
+          expect(ok, `${slot}: ${tag}`).toBe(true);
+        }
       }
     });
   });
 
   describe("접객 문구", () => {
-    it("id 유일, ja 중복 없음", () => {
+    it("80개 이상, id 유일, ja 중복 없음", () => {
+      expect(phrases.length).toBeGreaterThanOrEqual(80);
       expect(duplicates(phrases.map((p) => p.id))).toEqual([]);
       expect(duplicates(phrases.map((p) => p.ja))).toEqual([]);
     });
 
-    it("모든 질문 종류에 정답 문구가 있고, 첫 등장 레벨에 하나 이상 있다", () => {
-      for (const kind of QUESTION_ORDER) {
+    it("모든 질문 종류에 정답 문구가 2개 이상(TOTAL 은 1개)이고, 첫 등장 레벨에 하나 이상 있다", () => {
+      for (const kind of QUESTION_KINDS) {
+        if (KIND_MIN_LEVEL[kind] === 0) continue; // 합성 선택지(TOBACCO_PICK·LISTEN)는 문구가 없다
         const correct = phrases.filter((p) => p.kind === kind);
-        expect(correct.length, kind).toBeGreaterThanOrEqual(1);
+        expect(correct.length, kind).toBeGreaterThanOrEqual(kind === "TOTAL" ? 1 : 2);
         const minLevel = Math.min(...correct.map((p) => p.level));
         expect(minLevel, `${kind} min level`).toBeLessThanOrEqual(KIND_MIN_LEVEL[kind]);
       }
+      // 합성 선택지에는 콘텐츠 문구가 없다
+      expect(phrases.filter((p) => p.kind === "TOBACCO_PICK" || p.kind === "LISTEN")).toEqual([]);
     });
 
     it("PAY 는 결제수단별 정답이 정확히 하나", () => {
@@ -118,11 +212,21 @@ describe("KONBINI 콘텐츠 린트", () => {
       expect(phrases.filter((p) => p.kind !== "PAY" && p.payment !== undefined)).toEqual([]);
     });
 
+    it("DIRECTIONS 는 방향별 정답이 하나 이상, direction 은 DIRECTIONS 문구에만", () => {
+      const dir = phrases.filter((p) => p.kind === "DIRECTIONS");
+      for (const direction of DIRECTIONS) {
+        expect(dir.filter((p) => p.direction === direction).length, direction).toBeGreaterThanOrEqual(1);
+      }
+      expect(dir.every((p) => p.direction !== undefined)).toBe(true);
+      expect(phrases.filter((p) => p.kind !== "DIRECTIONS" && p.direction !== undefined)).toEqual([]);
+    });
+
     it("TOTAL 은 {total} 템플릿 하나", () => {
       const total = phrases.filter((p) => p.kind === "TOTAL");
       expect(total.length).toBe(1);
       expect(total[0].ja).toContain("{total}");
       expect(total[0].ko).toContain("{total}");
+      expect(total[0].reading).toContain("{total}");
       // 다른 문구는 {total} 을 쓰지 않는다 (엔진이 TOTAL 에서만 치환)
       expect(phrases.filter((p) => p.kind !== "TOTAL" && p.ja.includes("{total}"))).toEqual([]);
     });
@@ -133,10 +237,14 @@ describe("KONBINI 콘텐츠 린트", () => {
       }
     });
 
-    it("오답 전용 문구는 stage 를 가지며, 카테고리별 2개 이상", () => {
+    it("오답 전용 문구는 20개 이상, stage 를 가지며, 카테고리별 2개 이상", () => {
       const distractors = phrases.filter((p) => p.kind === null);
-      expect(distractors.length).toBeGreaterThanOrEqual(10);
-      for (const p of distractors) expect(p.stage, p.id).toBeDefined();
+      expect(distractors.length).toBeGreaterThanOrEqual(20);
+      for (const p of distractors) {
+        expect(p.stage, p.id).toBeDefined();
+        expect(p.payment, p.id).toBeUndefined();
+        expect(p.direction, p.id).toBeUndefined();
+      }
       for (const category of CATEGORIES) {
         expect(distractors.filter((p) => p.category === category).length, category).toBeGreaterThanOrEqual(2);
       }
@@ -144,19 +252,28 @@ describe("KONBINI 콘텐츠 린트", () => {
       expect(distractors.some((p) => p.stage === "THANKS")).toBe(true);
     });
 
-    it("레벨은 1~4, 한자가 있으면 reading 이 있다", () => {
-      const kanji = /[一-龯]/;
+    it("근접 오답 함정이 들어 있다 (ご利用 vs お持ち, 温め vs 冷やし, お持ち vs お作り)", () => {
+      const ja = new Set(phrases.filter((p) => p.kind === null).map((p) => p.ja));
+      expect(ja.has("袋はお持ちですか？")).toBe(true);
+      expect(ja.has("冷やしますか？")).toBe(true);
+      expect(ja.has("ポイントカードをお作りしますか？")).toBe(true);
+    });
+
+    it("레벨은 1~4, 모든 문구에 reading(한자 없음)과 parts 가 있다", () => {
       for (const p of phrases) {
-        expect(p.level).toBeGreaterThanOrEqual(1);
-        expect(p.level).toBeLessThanOrEqual(4);
-        if (kanji.test(p.ja)) expect(p.reading, p.id).toBeDefined();
+        expect(p.level, p.id).toBeGreaterThanOrEqual(1);
+        expect(p.level, p.id).toBeLessThanOrEqual(4);
+        expect(p.reading, p.id).toBeDefined();
+        expect(p.reading, p.id).not.toMatch(KANJI);
+        expect(p.parts, p.id).toBeDefined();
+        expect(p.parts?.length, p.id).toBeGreaterThan(0);
       }
     });
   });
 
   describe("레귤러", () => {
-    it("정확히 12명, id 유일", () => {
-      expect(regulars.length).toBe(12);
+    it("16명 이상, id 유일", () => {
+      expect(regulars.length).toBeGreaterThanOrEqual(16);
       expect(duplicates(regulars.map((r) => r.id))).toEqual([]);
     });
 
@@ -167,6 +284,47 @@ describe("KONBINI 콘텐츠 린트", () => {
       }
     });
 
+    it("구매 패턴이 있는 단골은 오는 시간대마다 등장 가능한 상품이 하나 이상 (무작위 장바구니로 떨어지지 않는다)", () => {
+      // 田中의 담배처럼 일부 상품은 그 시간대 레벨에서 걸러질 수 있지만, 전부 걸러져 패턴이 사라지면 안 된다
+      const byId = new Map(items.map((i) => [i.id, i]));
+      for (const r of regulars) {
+        if (r.purchase.length === 0) continue;
+        for (const slot of r.slots) {
+          const config = shifts[slot];
+          const ok = r.purchase.some((itemId) => {
+            const item = byId.get(itemId);
+            return (
+              item !== undefined && item.level <= config.level && item.tags.every((t) => config.activeTags.includes(t))
+            );
+          });
+          expect(ok, `${r.id} @ ${slot}`).toBe(true);
+        }
+      }
+    });
+
+    it("시즌 한정 단골의 시즌 상품은 그 달에 등장한다", () => {
+      const byId = new Map(items.map((i) => [i.id, i]));
+      for (const r of regulars) {
+        for (const itemId of r.purchase) {
+          const item = byId.get(itemId);
+          if (!item || item.season === undefined) continue;
+          expect(r.unlock.type, `${r.id}: ${itemId} 는 시즌 상품`).toBe("season");
+          if (r.unlock.type === "season") expect(r.unlock.month, `${r.id}: ${itemId}`).toBe(item.season);
+        }
+      }
+    });
+
+    it("모든 firstWords 는 parts 가 있고, 한자가 있으면 reading(한자 없음)이 있다", () => {
+      for (const r of regulars) {
+        for (const w of r.firstWords) {
+          expect(w.parts, `${r.id}: ${w.ja}`).toBeDefined();
+          expect(w.parts?.length, `${r.id}: ${w.ja}`).toBeGreaterThan(0);
+          if (KANJI.test(w.ja)) expect(w.reading, `${r.id}: ${w.ja}`).toBeDefined();
+          if (w.reading) expect(w.reading, `${r.id}: ${w.ja}`).not.toMatch(KANJI);
+        }
+      }
+    });
+
     it("대사 5줄, 호감도 1..5 각각 하나", () => {
       for (const r of regulars) {
         expect(r.lines.length, r.id).toBe(5);
@@ -174,33 +332,72 @@ describe("KONBINI 콘텐츠 린트", () => {
       }
     });
 
-    it("처음 들은 말 2~3개, 시간대 1개 이상, 결제수단 유효", () => {
+    it("처음 들은 말 2~3개, 시간대 1개 이상, 결제수단 유효, 색은 hex", () => {
       for (const r of regulars) {
         expect(r.firstWords.length, r.id).toBeGreaterThanOrEqual(2);
         expect(r.firstWords.length, r.id).toBeLessThanOrEqual(3);
         expect(r.slots.length, r.id).toBeGreaterThanOrEqual(1);
+        for (const slot of r.slots) expect(SHIFT_SLOTS).toContain(slot);
         expect(PAYMENT_METHODS).toContain<PaymentMethod>(r.payment);
+        for (const color of [r.visual.skin, r.visual.hairColor, r.visual.outfit]) expect(color, r.id).toMatch(HEX);
+        if (r.visual.accent) expect(r.visual.accent, r.id).toMatch(HEX);
       }
     });
 
-    it("해금 조건: 저녁 시프트 2명(저녁·심야), 선배 승급 1명, 12월 시즌 1명", () => {
+    it("해금 조건: 시프트 해금 2명 이상(저녁·심야), 승급 해금 1명 이상, 시즌 해금 4명 이상이 서로 다른 달 4개 이상(12월 포함)", () => {
       const slotUnlocks = regulars.filter((r) => r.unlock.type === "slot");
-      expect(slotUnlocks.length).toBe(2);
-      expect(regulars.filter((r) => r.unlock.type === "rank").length).toBe(1);
+      expect(slotUnlocks.length).toBeGreaterThanOrEqual(2);
+      expect(slotUnlocks.some((r) => r.unlock.type === "slot" && r.unlock.slot === "yoru")).toBe(true);
+      expect(slotUnlocks.some((r) => r.unlock.type === "slot" && r.unlock.slot === "shinya")).toBe(true);
+      // 시프트 해금 단골은 그 시간대에 실제로 온다
+      for (const r of slotUnlocks) {
+        if (r.unlock.type === "slot") expect(r.slots, r.id).toContain(r.unlock.slot);
+      }
+      expect(regulars.filter((r) => r.unlock.type === "rank").length).toBeGreaterThanOrEqual(1);
+
       const season = regulars.filter((r) => r.unlock.type === "season");
-      expect(season.length).toBe(1);
-      expect(season[0].unlock).toMatchObject({ month: 12 });
+      expect(season.length).toBeGreaterThanOrEqual(4);
+      const months = new Set(season.map((r) => (r.unlock.type === "season" ? r.unlock.month : 0)));
+      expect(months.size).toBeGreaterThanOrEqual(4);
+      expect(months.has(12)).toBe(true);
+      for (const m of months) {
+        expect(m).toBeGreaterThanOrEqual(1);
+        expect(m).toBeLessThanOrEqual(12);
+      }
+    });
+
+    it("심야 시프트에도 오는 단골이 2명 이상", () => {
+      expect(regulars.filter((r) => r.slots.includes("shinya")).length).toBeGreaterThanOrEqual(2);
     });
   });
 
   describe("점장", () => {
-    it("모든 순간에 3줄 이상, 홈은 시간대별로 1줄 이상", () => {
-      for (const when of ["home", "shift_end_good", "shift_end_mid", "shift_end_bad", "absent"] as const) {
+    it("모든 순간에 3줄 이상, 홈은 시간대별로 1줄 이상(심야 2줄 이상)", () => {
+      for (const when of [
+        "home",
+        "shift_end_good",
+        "shift_end_mid",
+        "shift_end_bad",
+        "absent",
+        "exam_ready",
+        "exam_pass",
+        "exam_fail",
+      ] as const) {
         expect(manager.filter((m) => m.when === when).length, when).toBeGreaterThanOrEqual(3);
       }
       for (const slot of SHIFT_SLOTS) {
         expect(manager.filter((m) => m.when === "home" && m.slot === slot).length, slot).toBeGreaterThanOrEqual(1);
       }
+      expect(manager.filter((m) => m.when === "home" && m.slot === "shinya").length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("시즌 대사는 달마다 정확히 하나, month 는 season 대사에만", () => {
+      const season = manager.filter((m) => m.when === "season");
+      for (const month of MONTHS) {
+        expect(season.filter((m) => m.month === month).length, `${month}월`).toBe(1);
+      }
+      expect(manager.filter((m) => m.when !== "season" && m.month !== undefined)).toEqual([]);
+      expect(manager.filter((m) => m.when !== "home" && m.slot !== undefined)).toEqual([]);
     });
 
     it("디자인 시안 문구를 포함한다", () => {
@@ -211,7 +408,7 @@ describe("KONBINI 콘텐츠 린트", () => {
   });
 
   describe("시프트·직급", () => {
-    it("3개 시간대 모두 있고 slot 이 키와 일치", () => {
+    it("4개 시간대 모두 있고 slot 이 키와 일치", () => {
       for (const slot of SHIFT_SLOTS) {
         expect(shifts[slot].slot).toBe(slot);
         for (const tag of shifts[slot].activeTags) expect(ITEM_TAGS).toContain(tag);
@@ -229,17 +426,112 @@ describe("KONBINI 콘텐츠 린트", () => {
     });
   });
 
-  describe("손님 응답", () => {
-    it("모든 질문 종류에 응답 3개 이상과 힌트가 있다", () => {
-      for (const kind of QUESTION_ORDER) {
-        expect(replies[kind].length, kind).toBeGreaterThanOrEqual(3);
+  describe("손님 대사", () => {
+    it("모든 질문 종류에 응답 5개 이상과 힌트가 있다", () => {
+      for (const kind of QUESTION_KINDS) {
+        expect(replies[kind].length, kind).toBeGreaterThanOrEqual(5);
         expect(hints[kind], kind).toBeDefined();
+      }
+      for (const kind of QUESTION_ORDER) expect(replies[kind].length, kind).toBeGreaterThanOrEqual(5);
+    });
+
+    it("당황 8개 이상 · 이탈 6개 이상", () => {
+      expect(confusedReplies.length).toBeGreaterThanOrEqual(8);
+      expect(leaveReplies.length).toBeGreaterThanOrEqual(6);
+    });
+
+    it("리스닝 요구는 모든 타깃에 5개 이상, 라벨도 모두 있다", () => {
+      for (const target of LISTEN_TARGETS) {
+        expect(listenRequests[target]?.length ?? 0, target).toBeGreaterThanOrEqual(5);
+        expect(listenTargets[target].ja.length, target).toBeGreaterThan(0);
+        expect(listenTargets[target].icon.length, target).toBeGreaterThan(0);
       }
     });
 
-    it("당황·이탈 대사가 3개 이상", () => {
-      expect(confusedReplies.length).toBeGreaterThanOrEqual(3);
-      expect(leaveReplies.length).toBeGreaterThanOrEqual(3);
+    it("돌발 이벤트 첫마디는 모든 종류에 4개 이상, 관광객용 영어가 하나 이상", () => {
+      for (const kind of EVENT_KINDS) {
+        expect(eventPrompts[kind].length, kind).toBeGreaterThanOrEqual(4);
+        expect(eventPrompts[kind].some((r) => r.en), kind).toBe(true);
+      }
+    });
+
+    it("담배 번호 요구는 5개 이상이고 모두 {n} 을 가진다", () => {
+      expect(tobaccoRequests.length).toBeGreaterThanOrEqual(5);
+      for (const r of tobaccoRequests) {
+        expect(r.ja).toContain("{n}");
+        expect(r.ko).toContain("{n}");
+        if (r.en) expect(r.en).toContain("{n}");
+      }
+    });
+
+    it("손님 대사 총합 300줄 이상 (응답·당황·힌트·이탈·리스닝·이벤트·담배)", () => {
+      const total =
+        Object.values(replies).reduce((n, list) => n + list.length, 0) +
+        confusedReplies.length +
+        Object.values(hints).length +
+        leaveReplies.length +
+        Object.values(listenRequests).reduce((n, list) => n + (list?.length ?? 0), 0) +
+        Object.values(eventPrompts).reduce((n, list) => n + list.length, 0) +
+        tobaccoRequests.length;
+      expect(total).toBeGreaterThanOrEqual(300);
+    });
+
+    it("모든 대사는 ja·ko 가 비어 있지 않다", () => {
+      const all = [
+        ...Object.values(replies).flat(),
+        ...confusedReplies,
+        ...Object.values(hints),
+        ...leaveReplies,
+        ...Object.values(listenRequests).flat(),
+        ...Object.values(eventPrompts).flat(),
+        ...tobaccoRequests,
+        ...regulars.flatMap((r) => r.firstWords),
+      ];
+      for (const r of all) {
+        expect(r.ja.length).toBeGreaterThan(0);
+        expect(r.ko.length).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe("시즌", () => {
+    it("12개월 각 하나, month 유일", () => {
+      expect(seasons.length).toBe(12);
+      expect(duplicates(seasons.map((s) => String(s.month)))).toEqual([]);
+      for (const month of MONTHS) {
+        expect(seasons.some((s) => s.month === month), `${month}월`).toBe(true);
+      }
+    });
+
+    it("이름·포스터가 비어 있지 않다", () => {
+      for (const s of seasons) {
+        expect(s.nameJa.length, `${s.month}월`).toBeGreaterThan(0);
+        expect(s.nameKo.length, `${s.month}월`).toBeGreaterThan(0);
+        expect(s.posterJa.length, `${s.month}월`).toBeGreaterThan(0);
+      }
+    });
+
+    it("규칙 변경이 있는 달은 4개 이상이고, 규칙과 공지(ja·ko)는 항상 함께 있다", () => {
+      const ruled = seasons.filter((s) => s.rule !== undefined);
+      expect(ruled.length).toBeGreaterThanOrEqual(4);
+      for (const s of seasons) {
+        const hasNotice = s.noticeJa !== undefined && s.noticeKo !== undefined;
+        expect(hasNotice, `${s.month}월`).toBe(s.rule !== undefined);
+        if (s.rule) {
+          expect(["bagSize", "pointCardAlways", "receiptAsk"]).toContain(s.rule.kind);
+          expect(s.noticeJa?.length).toBeGreaterThan(0);
+          expect(s.noticeKo?.length).toBeGreaterThan(0);
+        }
+      }
+      // 세 종류의 규칙이 모두 한 번 이상 쓰인다
+      const kinds = new Set(ruled.map((s) => s.rule?.kind));
+      expect(kinds.size).toBe(3);
+    });
+
+    it("시즌 규칙 질문(BAG_SIZE·RECEIPT_ASK)은 레벨 1 정답 문구가 있다", () => {
+      for (const kind of ["BAG_SIZE", "RECEIPT_ASK"] as const) {
+        expect(phrases.some((p) => p.kind === kind && p.level === 1), kind).toBe(true);
+      }
     });
   });
 });

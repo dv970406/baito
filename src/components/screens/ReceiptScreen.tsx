@@ -27,16 +27,41 @@ import {
 import { TAG_KANJI, loadLastReceipt } from "@/components/game/shiftModel";
 import { cn } from "@/lib/cn";
 import { formatReceiptDate } from "@/lib/format";
-import { shareText } from "@/lib/share";
+import { renderFrozenMomentPng, renderReceiptPng } from "@/lib/image";
+import { shareFile, shareText, type ShareFileResult } from "@/lib/share";
 import { useGameStore } from "@/store/gameStore";
-import { buildShareText, pickManagerLine, shareToast, shortDate } from "./receiptModel";
-
-/** 금액 템플릿(合計で {total}円です)은 영수증에서 손님별 금액이 없으므로 〇〇 로 중립 표기 */
-function neutralTemplate(text: string): string {
-  return text.replace("{total}", "〇〇");
-}
+import {
+  buildShareText,
+  examVerdict,
+  frozenSeconds,
+  hardestLabel,
+  hardestTail,
+  pickManagerLine,
+  shareToast,
+  shortDate,
+} from "./receiptModel";
 
 const TOAST_MS = 2400;
+
+/** 파일 공유 결과 → 안내 문구 */
+export function fileToast(result: ShareFileResult | "failed"): string | null {
+  switch (result) {
+    case "shared":
+      return "공유했어요";
+    case "downloaded":
+      return "이미지를 저장했어요";
+    case "unsupported":
+    case "failed":
+      return "이 브라우저에서는 이미지를 만들 수 없어요";
+    default:
+      return null;
+  }
+}
+
+/** 파일 이름용 날짜 "20261110" */
+function fileStamp(iso: string): string {
+  return iso.slice(0, 10).replace(/-/g, "");
+}
 
 export function ReceiptScreen() {
   const hydrated = useGameStore((s) => s.hydrated);
@@ -49,8 +74,18 @@ export function ReceiptScreen() {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [busy, setBusy] = useState<"receipt" | "moment" | null>(null);
+
   const list: ShiftSummary[] = sessions.length > 0 ? sessions : fallback ? [fallback] : [];
   const current = list[Math.min(selected, Math.max(0, list.length - 1))] ?? null;
+  const day = Math.max(1, profile.totalShifts - selected);
+
+  const showToast = (message: string | null) => {
+    if (!message) return;
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+  };
 
   const handleShare = async () => {
     if (!current) return;
@@ -59,11 +94,48 @@ export function ReceiptScreen() {
       text: buildShareText(konbini, current),
       url: typeof window === "undefined" ? undefined : window.location.origin,
     });
-    const message = shareToast(result);
-    if (!message) return;
-    setToast(message);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+    showToast(shareToast(result));
+  };
+
+  /** 영수증 PNG 저장(공유 시트 지원 시 공유) */
+  const handleSaveImage = async () => {
+    if (!current || busy) return;
+    setBusy("receipt");
+    try {
+      const blob = await renderReceiptPng(current, profile, konbini, { day });
+      if (!blob) {
+        showToast(fileToast("failed"));
+        return;
+      }
+      const result = await shareFile(blob, `baito-receipt-${fileStamp(current.playedAt)}.png`, buildShareText(konbini, current));
+      showToast(fileToast(result));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** 「この一瞬」 공유 카드 */
+  const handleShareMoment = async () => {
+    if (!current || busy) return;
+    setBusy("moment");
+    try {
+      const blob = await renderFrozenMomentPng(current, konbini);
+      if (!blob) {
+        showToast(fileToast("failed"));
+        return;
+      }
+      const label = hardestLabel(konbini, current.hardest);
+      const seconds = frozenSeconds(current);
+      const line = seconds !== null ? `${seconds}秒 固まった` : "一番迷った一言";
+      const result = await shareFile(
+        blob,
+        `baito-moment-${fileStamp(current.playedAt)}.png`,
+        `「${label?.ja ?? ""}」 ${line} #BAITO #${konbini.code}`,
+      );
+      showToast(fileToast(result));
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -90,7 +162,7 @@ export function ReceiptScreen() {
         </ReceiptPaper>
       ) : current ? (
         <>
-          <Receipt summary={current} playerName={profile.name} day={Math.max(1, profile.totalShifts - selected)} />
+          <Receipt summary={current} playerName={profile.name} day={day} />
           {list.length > 1 ? (
             <History
               list={list}
@@ -111,6 +183,21 @@ export function ReceiptScreen() {
             <CtaButton variant="onSurface" icon="share" onClick={handleShare}>
               영수증 공유
             </CtaButton>
+            <div className="grid grid-cols-2 gap-2.5">
+              <CtaButton variant="ghost" icon="download" onClick={handleSaveImage} loading={busy === "receipt"} aria-label="영수증 이미지 저장">
+                <span lang="ja">画像を保存</span>
+              </CtaButton>
+              <CtaButton
+                variant="ghost"
+                icon="image"
+                onClick={handleShareMoment}
+                loading={busy === "moment"}
+                disabled={!current.hardest}
+                aria-label="얼어붙은 순간 공유 카드"
+              >
+                <span lang="ja">この一瞬をシェア</span>
+              </CtaButton>
+            </div>
             <CtaButton as="link" href="/konbini" variant="ghost">
               다음 시프트
             </CtaButton>
@@ -128,7 +215,8 @@ export function ReceiptScreen() {
 
 function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerName: string; day: number }) {
   const config = konbini.shifts[summary.slot];
-  const hardestPhrase = summary.hardest ? konbini.phrases.find((p) => p.id === summary.hardest?.phraseId) : undefined;
+  const hardest = hardestLabel(konbini, summary.hardest);
+  const exam = examVerdict(konbini, summary);
   const regularsMet = summary.regularsMet
     .map((id) => konbini.regulars.find((r) => r.id === id))
     .filter((r): r is NonNullable<typeof r> => r !== undefined);
@@ -151,6 +239,7 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
           担当 <span className="font-ko">{playerName}</span>
         </span>
       </div>
+      {exam ? <ExamBlock exam={exam} /> : null}
       <DashedDivider />
 
       <div className="flex flex-col gap-2.5 py-3.5">
@@ -177,6 +266,9 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
             tone="perfect"
           />
         ) : null}
+        {summary.events > 0 ? (
+          <StatRow label={<Label ja="突発対応" ko="돌발 응대" />} value={`${summary.events}件`} />
+        ) : null}
       </div>
       <DashedDivider />
 
@@ -195,20 +287,13 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
       {/* 가장 헷갈린 한마디 */}
       <div className="mt-3.5 flex flex-col gap-1 rounded-lg bg-combo-soft p-3">
         <span className="font-jp text-label text-combo">一番迷った一言 · 오늘 가장 헷갈린 한마디</span>
-        {hardestPhrase && summary.hardest ? (
+        {hardest && summary.hardest ? (
           <>
             <span lang="ja" className="font-jp text-[16px] font-extrabold leading-snug text-ink">
-              {neutralTemplate(hardestPhrase.ja)}
+              {hardest.ja}
             </span>
             <span className="font-ko text-caption text-ink-muted">
-              {neutralTemplate(hardestPhrase.ko)}
-              {" · "}
-              {[
-                summary.hardest.wrongCount > 0 ? `${summary.hardest.wrongCount}번 다른 말` : null,
-                summary.hardest.lateCount > 0 ? `${summary.hardest.lateCount}번 늦게` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+              {[hardest.ko, hardestTail(summary.hardest)].filter(Boolean).join(" · ")}
             </span>
           </>
         ) : (
@@ -253,6 +338,46 @@ function Receipt({ summary, playerName, day }: { summary: ShiftSummary; playerNa
         BAITO · {konbini.code} · DAY {day}
       </span>
     </ReceiptPaper>
+  );
+}
+
+/** 승급 시험(점장 점검) 결과 — 영수증 머리 아래 */
+function ExamBlock({ exam }: { exam: NonNullable<ReturnType<typeof examVerdict>> }) {
+  return (
+    <div
+      data-testid="exam-block"
+      data-passed={exam.passed}
+      className={cn(
+        "mb-3.5 flex flex-col gap-1.5 rounded-lg p-3",
+        exam.passed ? "bg-accent-soft" : "bg-surface-sunken",
+      )}
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <span className={cn("font-jp text-label", exam.passed ? "text-accent" : "text-ink-muted")}>
+          店長点検 · 점장 점검
+        </span>
+        <span lang="ja" className="font-jp text-phrase-lg text-ink">
+          {exam.passed ? "合格" : "不合格"}
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-2 font-jp text-caption text-ink-muted">
+        <span lang="ja">
+          基準 ×{exam.comboRequired} · 最高 ×{exam.maxCombo}
+        </span>
+        <span className={exam.missed > 0 ? "text-irritation-ink" : undefined}>이탈 {exam.missed}명</span>
+      </div>
+      {exam.passed && exam.rank ? (
+        <span className="font-ko text-caption text-ink">
+          새 명찰 ·{" "}
+          <span lang="ja" className="font-jp font-extrabold">
+            {exam.rank.ja}
+          </span>{" "}
+          {exam.rank.ko}
+        </span>
+      ) : exam.passed ? null : (
+        <span className="font-ko text-caption text-ink-muted">다음 주 월요일에 다시 볼 수 있어요</span>
+      )}
+    </div>
   );
 }
 

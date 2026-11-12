@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { M_PLUS_Rounded_1c, Noto_Sans_KR } from "next/font/google";
 import { SaveSync } from "@/store/SaveSync";
+import { RegisterSw } from "./RegisterSw";
 import "./globals.css";
 
 /** 일본어·숫자·UI 기본 서체 (둥근 고딕, POS 느낌) */
@@ -23,6 +24,8 @@ export const metadata: Metadata = {
   description:
     "일본에서 알바를 하며 손님을 응대하는 리듬 시뮬레이션. 첫 직장은 편의점 KONBINI.",
   applicationName: "BAITO",
+  // PWA 매니페스트(app/manifest.ts) — 아이콘은 app/icon.tsx·apple-icon.tsx 가 빌드 시 생성
+  manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "BAITO", statusBarStyle: "default" },
 };
 
@@ -42,6 +45,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full">
         <SaveSync>{children}</SaveSync>
+        <RegisterSw />
       </body>
     </html>
   );

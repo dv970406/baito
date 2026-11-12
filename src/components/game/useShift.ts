@@ -6,7 +6,7 @@
  * - 상태 전이 자체는 전부 엔진 안에서 일어나므로 이 훅은 "시계"와 "입력"만 담당한다.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ItemTag, Regular, ShiftConfig, ShiftState, TagWeights, WorkplaceContent } from "@/engine/types";
+import type { ExamContext, ItemTag, Regular, ShiftConfig, ShiftState, TagWeights, WorkplaceContent } from "@/engine/types";
 import { createShift, shiftReducer } from "@/engine/shift";
 
 export interface UseShiftOptions {
@@ -16,6 +16,10 @@ export interface UseShiftOptions {
   tagWeights: TagWeights;
   regularsAvailable: Regular[];
   unlockedTags: ItemTag[];
+  /** 플레이 중인 달(1~12) — 시즌 상품·규칙. 없으면 시즌 없음 */
+  month?: number;
+  /** 승급 시험(점장 점검)이면 그 정보 */
+  exam?: ExamContext | null;
 }
 
 /** 한 프레임에 반영하는 최대 경과 시간(ms). 탭 복귀 직후 타이머가 한꺼풀 튀는 것을 막는다. */

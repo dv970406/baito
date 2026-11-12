@@ -2,7 +2,7 @@
 
 /**
  * 02 KONBINI 홈 · 시프트 표 (surface 톤, 탭바 "시프트").
- * 점장 메모 → 오늘 시프트 3줄(완료/출근/잠김) → 단골·직급·말하기 모드 → 하단 출근 CTA.
+ * 점장 메모 → 시즌 공지 → 오늘 시프트 4줄(朝·昼·夕 + 추가 근무 深夜) → 단골·승급 시험·말하기 모드 → 하단 출근 CTA.
  * 날짜·localStorage 는 클라이언트에서만 읽는다: `hydrated` 전에는 자리표시 스켈레톤.
  */
 import Link from "next/link";
@@ -22,10 +22,15 @@ import {
 import { konbini } from "@/content";
 import { konbiniManager } from "@/content/konbini/manager";
 import { konbiniRanks, konbiniShifts } from "@/content/konbini/shifts";
-import { dayDiff } from "@/engine/progression";
+import { dayDiff, rankAtLeast } from "@/engine/progression";
 import {
+  DAILY_SLOTS,
   SHIFT_SLOTS,
   type ManagerLine,
+  type RankDef,
+  type RankId,
+  type Season,
+  type ShiftConfig,
   type ShiftSlot,
   type ShiftSummary,
 } from "@/engine/types";
@@ -36,7 +41,9 @@ import { isSpeechRecognitionSupported } from "@/lib/speech";
 import { localYmd } from "@/store/date";
 import { useGameStore } from "@/store/gameStore";
 import {
+  selectAvailableSlots,
   selectCompletedToday,
+  selectExam,
   selectNextSlot,
   selectRank,
   selectRegularsMetCount,
@@ -44,6 +51,7 @@ import {
 
 const RESUME_HREF = "/";
 const REGULARS_HREF = "/konbini/regulars";
+const EXAM_HREF = "/konbini/shift/exam";
 const shiftHref = (slot: ShiftSlot) => `/konbini/shift/${slot}`;
 
 /** 시간대별 첫인사 (다음 시프트 기준) */
@@ -51,6 +59,7 @@ const GREETING: Record<ShiftSlot, string> = {
   asa: "おはよう、",
   hiru: "お疲れ、",
   yoru: "こんばんは、",
+  shinya: "こんばんは、",
 };
 
 /* ───────────────────────── 순수 헬퍼 ───────────────────────── */
@@ -66,7 +75,8 @@ function hashString(input: string): number {
 
 /**
  * 오늘의 점장 메모.
- * 이틀 이상 비웠으면 결근 대사, 아니면 다음 시프트 시간대의 홈 대사. 날짜 해시로 하루 한 줄 고정.
+ * 이틀 이상 비웠으면 결근 대사 → 승급 시험을 볼 수 있으면 점검 예고(exam_ready) → 셋 다 끝났으면 마감 대사 →
+ * 아니면 다음 시프트 시간대의 홈 대사. 날짜 해시로 하루 한 줄 고정.
  */
 export function pickManagerLine(
   lines: ManagerLine[],
@@ -74,22 +84,52 @@ export function pickManagerLine(
     today: string;
     lastPlayDate: string | null;
     nextSlot: ShiftSlot | null;
+    /** 승급 시험(점장 점검)을 지금 볼 수 있는가 */
+    examAvailable?: boolean;
   },
 ): ManagerLine | null {
-  const { today, lastPlayDate, nextSlot } = opts;
+  const { today, lastPlayDate, nextSlot, examAvailable = false } = opts;
   const absent = lastPlayDate !== null && dayDiff(lastPlayDate, today) >= 2;
 
-  let pool: ManagerLine[];
-  if (nextSlot === null) {
-    pool = lines.filter((l) => l.when === "shift_end_good");
-  } else if (absent) {
+  let pool: ManagerLine[] = [];
+  if (absent) {
     pool = lines.filter((l) => l.when === "absent");
+  }
+  if (pool.length === 0 && examAvailable) {
+    pool = lines.filter((l) => l.when === "exam_ready");
+  }
+  if (pool.length > 0) {
+    // 결근·점검 대사는 시간대와 무관
+  } else if (nextSlot === null) {
+    pool = lines.filter((l) => l.when === "shift_end_good");
   } else {
     pool = lines.filter((l) => l.when === "home" && l.slot === nextSlot);
     if (pool.length === 0) pool = lines.filter((l) => l.when === "home");
   }
   if (pool.length === 0) return null;
   return pool[hashString(`${today}:${nextSlot ?? "closed"}`) % pool.length];
+}
+
+/** 이번 달 시즌 공지. 시즌이 없거나 noticeJa 가 없으면 null (빈 배열에서도 안전) */
+export function pickSeasonNotice(seasons: Season[], month: number): Season | null {
+  const season = seasons.find((s) => s.month === month);
+  if (!season || !season.noticeJa) return null;
+  return season;
+}
+
+/**
+ * 추가 시프트(심야)가 잠긴 이유 문구. 직급이 모자라면 「先輩から」, 직급은 됐지만 기본 시프트가 남았으면 "세 시프트 후".
+ */
+export function optionalLockReason(
+  config: ShiftConfig,
+  rankId: RankId,
+  ranks: RankDef[],
+): { ja: string; ko: string } {
+  const required = config.requiredRank ? ranks.find((r) => r.id === config.requiredRank) : null;
+  if (required && !rankAtLeast(rankId, required.id, ranks)) {
+    return { ja: `${required.ja}から`, ko: `${required.ko}부터 열려요` };
+  }
+  return { ja: "", ko: `${DAILY_SLOTS.length} 시프트 후 열림` };
 }
 
 /** 오늘 그 시간대에 끝낸 영수증(가장 최근) */
@@ -100,6 +140,8 @@ function findTodaySession(
 ): ShiftSummary | undefined {
   return sessions.find((s) => {
     if (s.slot !== slot || s.workplaceId !== konbini.id) return false;
+    // 승급 시험은 시간대 설정만 빌린 추가 근무 — 시프트 표 기록에 섞지 않는다
+    if (s.exam) return false;
     const d = new Date(s.playedAt);
     return !Number.isNaN(d.getTime()) && localYmd(d) === today;
   });
@@ -134,12 +176,14 @@ interface ShiftRowProps {
   state: ShiftRowState;
   /** 완료 행의 영수증 요약 */
   session?: ShiftSummary;
+  /** 잠김 이유(추가 시프트). 없으면 "이전 시프트 후 열림" */
+  lockReason?: { ja: string; ko: string };
 }
 
-function ShiftRow({ slot, state, session }: ShiftRowProps) {
+function ShiftRow({ slot, state, session, lockReason }: ShiftRowProps) {
   const cfg = konbiniShifts[slot];
   const title = `${cfg.nameKo} · ${cfg.hours}`;
-  const prevSlot = SHIFT_SLOTS[SHIFT_SLOTS.indexOf(slot) - 1];
+  const prevSlot = DAILY_SLOTS[DAILY_SLOTS.indexOf(slot) - 1];
 
   if (state === "next") {
     return (
@@ -225,9 +269,23 @@ function ShiftRow({ slot, state, session }: ShiftRowProps) {
           <span className="font-jp text-pos-option text-ink">{title}</span>
           {locked ? (
             <span className="text-caption text-ink-muted">
-              {prevSlot
-                ? `${konbiniShifts[prevSlot].nameKo} 시프트 후 열림`
-                : "이전 시프트 먼저"}
+              {lockReason ? (
+                <>
+                  {lockReason.ja ? (
+                    <>
+                      <span lang="ja" className="font-jp">
+                        {lockReason.ja}
+                      </span>
+                      {" · "}
+                    </>
+                  ) : null}
+                  {lockReason.ko}
+                </>
+              ) : prevSlot ? (
+                `${konbiniShifts[prevSlot].nameKo} 시프트 후 열림`
+              ) : (
+                "이전 시프트 먼저"
+              )}
             </span>
           ) : (
             <Skel className="h-3 w-28" />
@@ -257,9 +315,22 @@ export function HomeScreen() {
   const rank = selectRank(profile, konbiniRanks);
   const completed = today ? selectCompletedToday(profile, today) : [];
   const nextSlot = today ? selectNextSlot(profile, today) : null;
+  const available = today ? selectAvailableSlots(profile, today, { shifts: konbiniShifts, ranks: konbiniRanks }) : [];
   const allDone = ready && nextSlot === null;
   const regularsMet = selectRegularsMetCount(profile);
   const regularsTotal = konbini.regulars.length;
+
+  // 추가 시프트(심야): 기본 3개를 끝내고 직급 조건을 채우면 열린다
+  const shinyaCfg = konbiniShifts.shinya;
+  const shinyaOpen = ready && available.includes("shinya") && !completed.includes("shinya");
+  const shinyaLock = ready && !available.includes("shinya") ? optionalLockReason(shinyaCfg, profile.rank, konbiniRanks) : undefined;
+
+  // 승급 시험(점장 점검) — 주 1회
+  const exam = today ? selectExam(profile, konbiniRanks, today) : null;
+  const examAvailable = Boolean(exam?.available);
+
+  // 이번 달 시즌 공지 — 달도 복원 뒤 클라이언트에서만
+  const seasonNotice = ready ? pickSeasonNotice(konbini.seasons, new Date().getMonth() + 1) : null;
 
   // 날짜 해시로 뽑으므로 렌더마다 같은 줄 — 메모 불필요
   const managerLine = today
@@ -267,6 +338,7 @@ export function HomeScreen() {
         today,
         lastPlayDate: profile.lastPlayDate,
         nextSlot,
+        examAvailable,
       })
     : null;
 
@@ -284,6 +356,7 @@ export function HomeScreen() {
     if (!ready) return "pending";
     if (completed.includes(slot)) return "completed";
     if (slot === nextSlot) return "next";
+    if (konbiniShifts[slot].optional && available.includes(slot)) return "next";
     return "locked";
   };
 
@@ -353,7 +426,9 @@ export function HomeScreen() {
                     <span className="font-jp text-money text-shell-ink">
                       {rank.current.ko}
                       {rank.next
-                        ? ` · 승급까지 ${rank.shiftsToNext}회`
+                        ? rank.examReady
+                          ? " · 점장 점검 대기"
+                          : ` · 승급까지 ${rank.shiftsToNext}회`
                         : " · 최고 직급"}
                     </span>
                   </>
@@ -398,6 +473,28 @@ export function HomeScreen() {
         )}
       </section>
 
+      {/* 시즌 공지 — 이번 달 규칙 변경 */}
+      {seasonNotice ? (
+        <section aria-label="이번 달 공지" className="mt-2.5 px-screen">
+          <Card variant="raised" padding="md" radius="2xl" data-testid="season-notice">
+            <div className="flex items-start gap-2.5">
+              <KanjiBadge kanji="告" tone="accent" label="공지" />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="font-jp text-label text-accent">
+                  今月のお知らせ · <span lang="ja">{seasonNotice.nameJa}</span>
+                </span>
+                <span lang="ja" className="font-jp text-bubble text-ink">
+                  {seasonNotice.noticeJa}
+                </span>
+                {seasonNotice.noticeKo ? (
+                  <span className="font-ko text-caption text-ink-muted">{seasonNotice.noticeKo}</span>
+                ) : null}
+              </div>
+            </div>
+          </Card>
+        </section>
+      ) : null}
+
       {/* 오늘 시프트 */}
       <section aria-labelledby="shifts-heading" className="mt-6 px-screen">
         <SectionHeader
@@ -413,11 +510,12 @@ export function HomeScreen() {
                 session={
                   today ? findTodaySession(sessions, slot, today) : undefined
                 }
+                lockReason={slot === "shinya" ? shinyaLock : undefined}
               />
             </li>
           ))}
         </ul>
-        {allDone ? (
+        {allDone && !shinyaOpen ? (
           <Card variant="sunken" padding="md" className="mt-2.5">
             <div className="flex flex-col gap-1">
               <span lang="ja" className="font-jp text-pos-option text-ink">
@@ -466,36 +564,77 @@ export function HomeScreen() {
             </div>
           </Card>
 
-          <Card variant="raised" padding="md">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="font-jp text-pos-option text-ink">
-                  {rank.next ? (
-                    <>
-                      다음 직급 <span lang="ja">{rank.next.ja}</span> ·{" "}
-                      {rank.next.ko}
-                    </>
-                  ) : (
-                    <>
-                      <span lang="ja">{rank.current.ja}</span> · 최고 직급
-                    </>
-                  )}
-                </span>
-                <span className="whitespace-nowrap text-caption text-ink-muted">
-                  {ready
-                    ? rank.next
-                      ? `${rank.shiftsToNext}회 남음`
-                      : "달성"
-                    : "—"}
+          {exam && exam.available && exam.target && exam.rule ? (
+            <Card
+              as="link"
+              href={EXAM_HREF}
+              variant="accent"
+              padding="md"
+              aria-label={`점장 점검 시프트 출근 · ${exam.target.ko} 승급`}
+              data-testid="exam-card"
+            >
+              <div className="flex items-center gap-3.5">
+                <KanjiBadge kanji="点検" tone="ghost" size="lg" label="점장 점검" className="text-[15px]" />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="font-jp text-pos-option text-brand-ink">
+                    <span lang="ja">店長点検</span> · <span lang="ja">{exam.target.ja}</span> {exam.target.ko}
+                  </span>
+                  <span className="text-caption text-accent-soft">
+                    {konbiniShifts[exam.rule.slot].kanji} 시프트 · 콤보 ×{exam.rule.combo} · 이탈 0
+                  </span>
+                </div>
+                <span className="shrink-0 rounded-pill bg-surface-raised px-3 py-2 font-jp text-[13px] font-extrabold text-accent">
+                  출근
                 </span>
               </div>
-              <ProgressBar
-                value={ready ? rank.progress : 0}
-                tone="accent"
-                label="다음 직급까지 진행"
-              />
-            </div>
-          </Card>
+            </Card>
+          ) : exam && exam.ready && exam.takenThisWeek && exam.target ? (
+            <Card variant="sunken" dashed padding="md" aria-disabled="true" data-testid="exam-card" data-taken="true">
+              <div className="flex items-center gap-3.5">
+                <KanjiBadge kanji="点検" tone="sunken" size="lg" label="점장 점검" className="text-[15px]" />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="font-jp text-pos-option text-ink-muted">
+                    <span lang="ja">店長点検</span> · <span lang="ja">{exam.target.ja}</span> {exam.target.ko}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-caption text-ink-muted">
+                    <Icon name="lock" size={14} />
+                    이번 주 점검 완료 · 다음 주 월요일
+                  </span>
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <Card variant="raised" padding="md">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-jp text-pos-option text-ink">
+                    {rank.next ? (
+                      <>
+                        다음 직급 <span lang="ja">{rank.next.ja}</span> ·{" "}
+                        {rank.next.ko}
+                      </>
+                    ) : (
+                      <>
+                        <span lang="ja">{rank.current.ja}</span> · 최고 직급
+                      </>
+                    )}
+                  </span>
+                  <span className="whitespace-nowrap text-caption text-ink-muted">
+                    {ready
+                      ? rank.next
+                        ? `${rank.shiftsToNext}회 남음`
+                        : "달성"
+                      : "—"}
+                  </span>
+                </div>
+                <ProgressBar
+                  value={ready ? rank.progress : 0}
+                  tone="accent"
+                  label="다음 직급까지 진행"
+                />
+              </div>
+            </Card>
+          )}
 
           <Card
             variant={speakingLocked ? "sunken" : "raised"}
@@ -538,6 +677,10 @@ export function HomeScreen() {
               icon="play"
             >
               출근하기 · {nextCfg.kanji}
+            </CtaButton>
+          ) : shinyaOpen ? (
+            <CtaButton as="link" href={shiftHref("shinya")} variant="primary" icon="play">
+              <span lang="ja">深夜</span> 출근 · {shinyaCfg.kanji}
             </CtaButton>
           ) : (
             <CtaButton variant="primary" disabled icon="play">

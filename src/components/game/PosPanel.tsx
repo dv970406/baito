@@ -4,16 +4,20 @@
  * POS 패널 — 레지 라벨 · 合計 디스플레이 · 질문 줄(타이머 링) · 2×2 선택지 · 뜻 토글.
  * 선택지는 퀴즈 카드가 아니라 계산대 버튼이다. 피드백은 "정답/오답" 글자가 아니라 손님 리액션과 속도 등급.
  */
-import type { AnswerOption, ShiftPhase } from "@/engine/types";
+import type { AnswerOption, QuestionKind, ShiftPhase } from "@/engine/types";
+import { maskJa } from "@/engine/distractor";
 import type { SpeechUiState } from "./ShiftBoard";
-import { Chip, Icon, PosButton, RegisterDisplay, TimerRing, type PosButtonState } from "@/components/ui";
+import { Chip, Icon, RegisterDisplay, TimerRing, type PosButtonState } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { RegisterButton, type RegisterButtonVariant } from "./RegisterButton";
 
 export interface PosPanelProps {
   registerLabel: string;
   /** 손님 합계(¥). 손님이 없으면 null → 0 표시 */
   total: number | null;
   phase: ShiftPhase;
+  /** 현재 질문 종류 — LISTEN 은 아이콘 그리드, TOBACCO_PICK 은 번호 선반으로 그린다 */
+  kind: QuestionKind | null;
   options: AnswerOption[];
   /** 이번 질문에서 플레이어가 누른 선택지 */
   pressedId: string | null;
@@ -26,6 +30,9 @@ export interface PosPanelProps {
   questionTotalMs: number;
   showKo: boolean;
   onToggleKo: () => void;
+  /** 후리가나(かな) 표시 */
+  showKana: boolean;
+  onToggleKana: () => void;
   onAnswer: (phraseId: string) => void;
   /** 말하기 버튼 상태: hidden(미지원) · locked(해금 전) · ready · listening */
   speech?: SpeechUiState;
@@ -44,10 +51,26 @@ function optionState(option: AnswerOption, pressedId: string | null, phase: Shif
   return option.isCorrect ? "correct" : "wrong";
 }
 
+/** 질문 종류 → 버튼 변형 */
+function variantFor(kind: QuestionKind | null): RegisterButtonVariant {
+  if (kind === "LISTEN") return "icon";
+  if (kind === "TOBACCO_PICK") return "shelf";
+  return "phrase";
+}
+
+/** 질문 줄 안내 — 리스닝은 "들은 것", 담배는 "선반 번호", 나머지는 "할 말" */
+function promptFor(kind: QuestionKind | null, retry: boolean): string {
+  if (retry) return "같은 질문을 한 번 더";
+  if (kind === "LISTEN") return "손님이 말한 건?";
+  if (kind === "TOBACCO_PICK") return "선반에서 꺼낼 번호는?";
+  return "손님에게 할 말은?";
+}
+
 export function PosPanel({
   registerLabel,
   total,
   phase,
+  kind,
   options,
   pressedId,
   wrongOnStep,
@@ -57,6 +80,8 @@ export function PosPanel({
   questionTotalMs,
   showKo,
   onToggleKo,
+  showKana,
+  onToggleKana,
   onAnswer,
   speech = "locked",
   interim = "",
@@ -65,7 +90,8 @@ export function PosPanel({
   className,
 }: PosPanelProps) {
   const answering = phase === "question";
-  const prompt = wrongOnStep > 0 && answering ? "같은 질문을 한 번 더" : "손님에게 할 말은?";
+  const prompt = promptFor(kind, wrongOnStep > 0 && answering);
+  const variant = variantFor(kind);
   // 선택지가 아직 없을 때(enter)도 자리는 유지해 레이아웃이 튀지 않게 한다
   const slots: (AnswerOption | null)[] = options.length > 0 ? options : [null, null, null, null];
 
@@ -98,14 +124,21 @@ export function PosPanel({
         <TimerRing remainingMs={answering ? questionRemainingMs : questionTotalMs} totalMs={questionTotalMs} />
       </div>
 
-      <div role="group" aria-label="선택지" className="grid grid-cols-2 gap-2.5">
+      <div role="group" aria-label="선택지" data-variant={variant} className="grid grid-cols-2 gap-2.5">
         {slots.map((option, i) =>
           option ? (
-            <PosButton
+            <RegisterButton
               key={option.phraseId}
-              ja={option.ja}
+              phraseId={option.phraseId}
+              variant={variant}
+              // 가려진 선택지는 표시할 때만 한자를 〇 로 바꾼다 (말하기 매칭·TTS 는 원문을 쓴다)
+              ja={option.masked ? maskJa(option.ja) : option.ja}
+              reading={option.reading}
               ko={option.ko}
+              icon={option.icon}
+              masked={option.masked}
               showKo={showKo}
+              showKana={showKana}
               state={optionState(option, pressedId, phase)}
               disabled={!answering}
               onClick={() => onAnswer(option.phraseId)}
@@ -124,9 +157,14 @@ export function PosPanel({
         ) : null}
         <div className="flex items-center justify-between gap-2.5">
           <SpeakButton state={speech} interim={interim} disabled={!answering} onSpeak={onSpeak} />
-          <Chip selected={showKo} onClick={onToggleKo} aria-label="선택지 한국어 뜻 표시">
-            뜻
-          </Chip>
+          <div className="flex items-center gap-1.5">
+            <Chip selected={showKana} onClick={onToggleKana} aria-label="선택지 후리가나 표시" lang="ja">
+              かな
+            </Chip>
+            <Chip selected={showKo} onClick={onToggleKo} aria-label="선택지 한국어 뜻 표시">
+              뜻
+            </Chip>
+          </div>
         </div>
       </div>
     </section>

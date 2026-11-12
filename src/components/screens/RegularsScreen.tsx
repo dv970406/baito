@@ -3,11 +3,12 @@
 /**
  * 04 단골 도감(常連図鑑).
  * 만난 단골은 상세 카드(아코디언)로, 아직 못 만난 손님은 3열 그리드(실루엣·잠김)로 보여준다.
+ * "처음 들은 말" 문장 카드는 길게 누르면(500ms) 한국어 번역과 단어 분해 한 줄이 펼쳐진다 — 찾는 사람에게만 보이는 설명.
  * 보이는 숫자는 만남 횟수·호감도뿐 — 학습 지표는 어디에도 없다.
  */
-import { useId, useMemo, useState } from "react";
-import type { Regular, ShiftSlot } from "@/engine/types";
-import { AFFINITY_MAX, isRegularUnlocked, rankFor } from "@/engine/progression";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import type { CustomerReply, Phrase, Regular, ShiftSlot } from "@/engine/types";
+import { AFFINITY_MAX, isRegularUnlocked } from "@/engine/progression";
 import { konbini } from "@/content";
 import type { RegularState } from "@/shared/player";
 import { useGameStore } from "@/store/gameStore";
@@ -31,7 +32,11 @@ const FILTERS: readonly FilterDef[] = [
   { key: "asa", label: `${konbini.shifts.asa.kanji} ${konbini.shifts.asa.nameKo}` },
   { key: "hiru", label: `${konbini.shifts.hiru.kanji} ${konbini.shifts.hiru.nameKo}` },
   { key: "yoru", label: `${konbini.shifts.yoru.kanji} ${konbini.shifts.yoru.nameKo}` },
+  { key: "shinya", label: `${konbini.shifts.shinya.kanji} ${konbini.shifts.shinya.nameKo}` },
 ];
+
+/** 길게 누르기 판정 시간(ms) */
+export const LONG_PRESS_MS = 500;
 
 /** 도감에서 레귤러 한 명이 놓이는 상태 */
 type EntryStatus = "met" | "unmet" | "locked";
@@ -51,6 +56,16 @@ function slotMeta(regular: Regular) {
   return { kanji: cfg.kanji, nameKo: cfg.nameKo };
 }
 
+/** "처음 들은 말"과 같은 일본어의 접객 문구 — 있으면 읽기·단어 분해를 빌려 쓴다 */
+export function findPhraseFor(word: CustomerReply, phrases: Phrase[]): Phrase | undefined {
+  return phrases.find((p) => p.ja === word.ja);
+}
+
+/** 시즌 한정 단골의 "N월 한정" 배지 문구. 시즌 해금이 아니면 null */
+export function seasonBadge(regular: Regular): string | null {
+  return regular.unlock.type === "season" ? `${regular.unlock.month}월 한정` : null;
+}
+
 /** 현재 호감도에서 열린 가장 높은 대사. 아직 아무 대사도 못 열었으면 첫 줄 */
 function currentLine(regular: Regular, affinity: number) {
   const sorted = regular.lines.slice().sort((a, b) => a.affinity - b.affinity);
@@ -68,16 +83,17 @@ export function RegularsScreen() {
   const profile = useGameStore((s) => s.profile);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [openId, setOpenId] = useState<string | null>(null);
+  // 달은 복원 뒤 클라이언트에서만 읽는다(시즌 한정 단골의 잠김 표시) — hydrated 는 클라이언트 효과 뒤에만 true
+  const month = hydrated ? new Date().getMonth() + 1 : null;
 
   const regulars = konbini.regulars;
   const total = regulars.length;
   const metCount = selectRegularsMetCount(profile);
 
   const entries = useMemo<Entry[]>(() => {
-    if (!hydrated) return [];
-    const rank = rankFor(profile.totalShifts, konbini.ranks).current.id;
-    const month = new Date().getMonth() + 1;
-    const slots = selectAvailableSlots(profile);
+    if (!hydrated || month === null) return [];
+    const rank = profile.rank;
+    const slots = selectAvailableSlots(profile, undefined, { shifts: konbini.shifts, ranks: konbini.ranks });
     return regulars.map((regular) => {
       const state = profile.regulars[regular.id] ?? EMPTY_STATE;
       if (state.metCount > 0) return { regular, state, status: "met" as const };
@@ -87,7 +103,7 @@ export function RegularsScreen() {
       );
       return { regular, state, status: unlocked ? ("unmet" as const) : ("locked" as const) };
     });
-  }, [hydrated, profile, regulars]);
+  }, [hydrated, month, profile, regulars]);
 
   const visible = entries.filter((e) => {
     switch (filter) {
@@ -142,6 +158,7 @@ export function RegularsScreen() {
                   key={e.regular.id}
                   regular={e.regular}
                   state={e.state}
+                  month={month}
                   open={openId === e.regular.id}
                   onToggle={() => setOpenId((cur) => (cur === e.regular.id ? null : e.regular.id))}
                 />
@@ -158,6 +175,7 @@ export function RegularsScreen() {
                     <LockedCard
                       key={e.regular.id}
                       title="???"
+                      caption={seasonBadge(e.regular) ?? undefined}
                       hint={e.regular.unlock.type === "open" ? "곧 만날 수 있어요" : e.regular.unlock.label}
                     />
                   ) : (
@@ -187,11 +205,13 @@ export function RegularsScreen() {
 interface MetRegularCardProps {
   regular: Regular;
   state: RegularState;
+  /** 이번 달(1~12). 복원 전엔 null */
+  month: number | null;
   open: boolean;
   onToggle: () => void;
 }
 
-function MetRegularCard({ regular, state, open, onToggle }: MetRegularCardProps) {
+function MetRegularCard({ regular, state, month, open, onToggle }: MetRegularCardProps) {
   const panelId = useId();
   const affinity = Math.max(0, Math.min(AFFINITY_MAX, state.affinity));
   const line = currentLine(regular, affinity);
@@ -200,6 +220,9 @@ function MetRegularCard({ regular, state, open, onToggle }: MetRegularCardProps)
   const heardSet = new Set(state.firstWordsHeard);
   const heard = regular.firstWords.filter((w) => heardSet.has(w.ja));
   const sortedLines = regular.lines.slice().sort((a, b) => a.affinity - b.affinity);
+  const season = seasonBadge(regular);
+  const seasonAway = regular.unlock.type === "season" && month !== null && month !== regular.unlock.month;
+  const isShinya = regular.slots.includes("shinya");
 
   return (
     <Card padding="none" radius="4xl" data-regular={regular.id} data-status="met">
@@ -226,8 +249,25 @@ function MetRegularCard({ regular, state, open, onToggle }: MetRegularCardProps)
               </span>
               <span className="shrink-0 font-ko text-caption text-ink-muted">{regular.nameKo}</span>
             </span>
-            <Badge tone="perfect">{slotKo} 단골</Badge>
+            <Badge tone="perfect" className="shrink-0">
+              {slotKo} 단골
+            </Badge>
           </div>
+          {isShinya || season ? (
+            <div className="flex flex-wrap items-center gap-1">
+              {isShinya ? (
+                <Badge tone="shell">
+                  <span lang="ja">深夜</span>
+                </Badge>
+              ) : null}
+              {season ? (
+                <Badge tone={seasonAway ? "muted" : "combo"} data-testid="season-badge">
+                  {season}
+                  {seasonAway ? " · 잠김" : ""}
+                </Badge>
+              ) : null}
+            </div>
+          ) : null}
 
           <span className="font-ko text-caption text-ink-muted">
             {regular.role} · {state.metCount}번 만남 ·{" "}
@@ -316,33 +356,13 @@ function MetRegularCard({ regular, state, open, onToggle }: MetRegularCardProps)
                 처음 들은 말 · {heard.length} / {regular.firstWords.length}
               </h3>
               <ul className="flex flex-col gap-1.5">
-                {regular.firstWords.map((w) => {
-                  const isHeard = heardSet.has(w.ja);
-                  return (
-                    <li
-                      key={w.ja}
-                      data-heard={isHeard}
-                      className={cn(
-                        "flex items-center justify-between gap-2 rounded-lg px-2.5 py-2",
-                        isHeard ? "bg-surface-raised shadow-hairline" : "bg-surface-sunken",
-                      )}
-                    >
-                      <span className="flex min-w-0 flex-col gap-0.5">
-                        <span
-                          lang="ja"
-                          className={cn("font-jp text-body font-bold", isHeard ? "text-ink" : "text-ink-muted")}
-                        >
-                          「{w.ja}」
-                        </span>
-                        {isHeard ? <span className="font-ko text-caption text-ink-muted">{w.ko}</span> : null}
-                      </span>
-                      {isHeard ? (
-                        <Icon name="check" size={16} strokeWidth={2.5} label="들었음" className="text-perfect-ink" />
-                      ) : null}
-                    </li>
-                  );
-                })}
+                {regular.firstWords.map((w) => (
+                  <FirstWordCard key={w.ja} word={w} heard={heardSet.has(w.ja)} phrase={findPhraseFor(w, konbini.phrases)} />
+                ))}
               </ul>
+              {heard.length > 0 ? (
+                <p className="m-0 text-micro font-bold text-ink-muted">길게 누르면 뜻이 보여요</p>
+              ) : null}
             </section>
           </div>
         ) : null}
@@ -362,10 +382,102 @@ function AffinityDots({ value }: { value: number }) {
   );
 }
 
+/* ───────────────────────── 처음 들은 말 — 문장 카드 ───────────────────────── */
+
+interface FirstWordCardProps {
+  word: CustomerReply;
+  heard: boolean;
+  /** 같은 일본어의 접객 문구(있으면 읽기·단어 분해를 보여준다) */
+  phrase?: Phrase;
+}
+
+/**
+ * 문장 카드. 들은 말만 길게 누르기(500ms)로 한국어 번역 + 단어 분해를 펼친다.
+ * 키보드는 Enter/Space 로 토글, aria-expanded 로 상태를 알린다.
+ */
+function FirstWordCard({ word, heard, phrase }: FirstWordCardProps) {
+  const detailId = useId();
+  const [expanded, setExpanded] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clear = () => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  };
+  useEffect(() => clear, []);
+
+  const onPointerDown = () => {
+    if (!heard) return;
+    clear();
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setExpanded((v) => !v);
+    }, LONG_PRESS_MS);
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (!heard) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setExpanded((v) => !v);
+    }
+  };
+
+  return (
+    <li
+      data-heard={heard}
+      className={cn("rounded-lg", heard ? "bg-surface-raised shadow-hairline" : "bg-surface-sunken")}
+    >
+      <button
+        type="button"
+        disabled={!heard}
+        aria-expanded={heard ? expanded : undefined}
+        aria-controls={heard ? detailId : undefined}
+        aria-label={heard ? `「${word.ja}」 뜻 보기 (길게 누르기)` : undefined}
+        onPointerDown={onPointerDown}
+        onPointerUp={clear}
+        onPointerLeave={clear}
+        onPointerCancel={clear}
+        onKeyDown={onKeyDown}
+        onContextMenu={(e) => e.preventDefault()}
+        className={cn(
+          "flex min-h-touch w-full select-none items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left",
+          "focus-visible:shadow-focus disabled:cursor-default",
+          "[-webkit-touch-callout:none]",
+        )}
+      >
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span lang="ja" className={cn("font-jp text-body font-bold", heard ? "text-ink" : "text-ink-muted")}>
+            「{word.ja}」
+          </span>
+          {heard && (word.reading ?? phrase?.reading) && (word.reading ?? phrase?.reading) !== word.ja ? (
+            <span lang="ja" className="font-jp text-label font-medium tracking-normal text-ink-muted">
+              {word.reading ?? phrase?.reading}
+            </span>
+          ) : null}
+        </span>
+        {heard ? <Icon name="check" size={16} strokeWidth={2.5} label="들었음" className="text-perfect-ink" /> : null}
+      </button>
+      {heard ? (
+        <div id={detailId} hidden={!expanded} className="flex flex-col gap-1 border-t border-border px-2.5 pb-2.5 pt-2">
+          <span className="font-ko text-caption text-ink">{word.ko}</span>
+          {(word.parts ?? phrase?.parts) ? (
+            <span lang="ja" className="font-jp text-label font-medium tracking-normal text-ink-muted" data-testid="word-parts">
+              {word.parts ?? phrase?.parts}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
 /* ───────────────────────── 실루엣 카드(열렸지만 아직 못 만남) ───────────────────────── */
 
 function SilhouetteCard({ regular }: { regular: Regular }) {
   const { kanji } = slotMeta(regular);
+  const season = seasonBadge(regular);
   return (
     <Card
       variant="sunken"
@@ -395,6 +507,7 @@ function SilhouetteCard({ regular }: { regular: Regular }) {
         </span>{" "}
         시프트에 나타남
       </span>
+      {season ? <Badge tone="combo">{season}</Badge> : null}
     </Card>
   );
 }

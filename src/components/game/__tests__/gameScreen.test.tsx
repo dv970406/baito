@@ -23,6 +23,10 @@ const { routerMock, audioMock, syncMock } = vi.hoisted(() => ({
     stopSpeaking: vi.fn(),
     isAudioEnabled: () => true,
     setAudioEnabled: vi.fn(),
+    // 콤보 레이어 — 실제 모듈의 임계값(5/10)을 그대로 따른다
+    comboLayerLevel: (combo: number) => (combo >= 10 ? 2 : combo >= 5 ? 1 : 0),
+    startComboLayer: vi.fn(),
+    stopComboLayer: vi.fn(),
   },
   syncMock: { pushShiftResult: vi.fn(() => Promise.resolve()) },
 }));
@@ -43,13 +47,16 @@ const CONFIG = konbini.shifts[SLOT];
 /** 화면과 같은 입력으로 만든 "그림자 엔진" — 정답 선택지와 말풍선을 미리 안다 */
 function mirrorShift(): ShiftState {
   const profile = useGameStore.getState().profile;
+  const month = new Date().getMonth() + 1;
   return createShift({
     content: konbini,
     config: CONFIG,
     seed: SEED,
     tagWeights: profile.tagWeights,
-    regularsAvailable: availableRegulars(konbini, profile, SLOT, new Date().getMonth() + 1),
+    regularsAvailable: availableRegulars(konbini, profile, SLOT, month),
     unlockedTags: selectUnlockedTags(profile, konbini.ranks),
+    // 화면(GameScreen)도 이번 달을 넘기므로 시즌 상품·규칙까지 같아야 같은 손님이 나온다
+    month,
   });
 }
 const start = (s: ShiftState) => shiftReducer(s, { type: "START" }, konbini);
@@ -71,6 +78,9 @@ const advance = (ms: number) => {
 /** 선택지 버튼(POS 버튼)만 — data-state 를 가진 버튼 */
 const optionButtons = () =>
   screen.getAllByRole("button").filter((b) => b.hasAttribute("data-state")) as HTMLButtonElement[];
+/** 버튼 → 선택지 id. 후리가나·뜻 줄이 함께 그려지므로 textContent 대신 data-phrase-id 로 맞춘다 */
+const idOf = (b: HTMLElement) => b.dataset.phraseId;
+const buttonFor = (buttons: HTMLButtonElement[], phraseId: string) => buttons.find((b) => idOf(b) === phraseId);
 
 /** 렌더 → 出勤 탭. (findBy* 는 가짜 타이머와 함께 쓰면 멈추므로 동기 getBy* 만 쓴다) */
 function clockIn() {
@@ -104,6 +114,8 @@ beforeEach(() => {
   audioMock.playSfx.mockClear();
   audioMock.speakJa.mockClear();
   audioMock.unlockAudio.mockClear();
+  audioMock.startComboLayer.mockClear();
+  audioMock.stopComboLayer.mockClear();
   syncMock.pushShiftResult.mockClear();
 });
 
@@ -148,11 +160,14 @@ describe("GameScreen — 인게임 루프", () => {
     expect(mirror.phase).toBe("question");
     const buttons = optionButtons();
     expect(buttons).toHaveLength(4);
-    expect(new Set(buttons.map((b) => b.textContent))).toEqual(new Set(mirror.options.map((o) => o.ja)));
+    expect(new Set(buttons.map(idOf))).toEqual(new Set(mirror.options.map((o) => o.phraseId)));
     buttons.forEach((b) => expect(b.disabled).toBe(false));
+    // 아침(Lv1)은 후리가나가 기본 ON — reading 이 있는 선택지는 읽기 줄이 함께 보인다
+    const withReading = mirror.options.find((o) => o.reading && !o.masked);
+    if (withReading) expect(screen.getByText(withReading.reading ?? "")).toBeTruthy();
 
     const correct = correctOf(mirror);
-    const target = buttons.find((b) => b.textContent === correct.ja);
+    const target = buttonFor(buttons, correct.phraseId);
     if (!target) throw new Error("정답 버튼을 찾지 못했다");
     fireEvent.click(target);
 
@@ -173,7 +188,7 @@ describe("GameScreen — 인게임 루프", () => {
     const mirror = skip(start(mirrorShift()));
     const wrong = mirror.options.find((o) => !o.isCorrect);
     if (!wrong) throw new Error("오답 선택지가 없다");
-    const target = optionButtons().find((b) => b.textContent === wrong.ja);
+    const target = buttonFor(optionButtons(), wrong.phraseId);
     if (!target) throw new Error("오답 버튼을 찾지 못했다");
     fireEvent.click(target);
 
@@ -191,7 +206,7 @@ describe("GameScreen — 인게임 루프", () => {
     // 당황 연출이 끝나면 같은 선택지로 재시도 — "같은 질문을 한 번 더"
     advance(TIMING.CONFUSED_MS + 60);
     expect(screen.getByText("같은 질문을 한 번 더")).toBeTruthy();
-    expect(new Set(optionButtons().map((b) => b.textContent))).toEqual(new Set(mirror.options.map((o) => o.ja)));
+    expect(new Set(optionButtons().map(idOf))).toEqual(new Set(mirror.options.map((o) => o.phraseId)));
     optionButtons().forEach((b) => expect(b.dataset.state).toBe("idle"));
   });
 
@@ -234,7 +249,7 @@ describe("GameScreen — 마감", () => {
         // 그림자 엔진을 같은 질문까지 끌어온다
         while (mirror.phase !== "question" && mirror.phase !== "done") mirror = skip(mirror);
         const correct = correctOf(mirror);
-        const target = enabled.find((b) => b.textContent === correct.ja);
+        const target = buttonFor(enabled, correct.phraseId);
         if (!target) throw new Error(`정답 버튼을 찾지 못했다: ${correct.ja}`);
         fireEvent.click(target);
         mirror = answer(tick(mirror, 50), correct.phraseId);
@@ -305,13 +320,15 @@ function openYoru() {
 }
 function mirrorYoru(): ShiftState {
   const profile = useGameStore.getState().profile;
+  const month = new Date().getMonth() + 1;
   return createShift({
     content: konbini,
     config: konbini.shifts.yoru,
     seed: SEED,
     tagWeights: profile.tagWeights,
-    regularsAvailable: availableRegulars(konbini, profile, "yoru", new Date().getMonth() + 1),
+    regularsAvailable: availableRegulars(konbini, profile, "yoru", month),
     unlockedTags: selectUnlockedTags(profile, konbini.ranks),
+    month,
   });
 }
 const remainingLabel = () => screen.getByRole("timer").getAttribute("aria-label");
@@ -357,7 +374,7 @@ describe("GameScreen — 말하기 모드", () => {
       rec.emitFinal([correct.ja.replace("？", "")]);
     });
 
-    const target = optionButtons().find((b) => b.textContent === correct.ja);
+    const target = buttonFor(optionButtons(), correct.phraseId);
     expect(target?.dataset.state).toBe("correct");
     expect(screen.getByText("PERFECT")).toBeTruthy();
     expect(audioMock.playSfx).toHaveBeenCalledWith("perfect");

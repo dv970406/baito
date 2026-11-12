@@ -9,21 +9,24 @@
  */
 import { resolveCart } from "./cartResolver";
 import { tagSetKey } from "./cartResolver";
-import { buildOptions, findCorrectPhrase } from "./distractor";
+import { buildOptions, findCorrectPhrase, listenId, tobaccoPickId } from "./distractor";
 import { computeWageDelta, WAGE_FLOOR } from "./progression";
 import { createRng, hashSeed } from "./rng";
 import { applyAnswerToWeights, effectiveActiveTags, generateCustomer } from "./scheduler";
 import { gradeSpeed } from "./scoring";
-import { QUESTION_TAG } from "./types";
+import { LISTEN_TARGETS, QUESTION_TAG } from "./types";
 import type {
   AnswerLog,
   CustomerReply,
   CustomerSpec,
+  ExamContext,
   HardestPhrase,
   ItemTag,
+  ListenTarget,
   QuestionKind,
   QuestionStep,
   Regular,
+  Season,
   ShiftConfig,
   ShiftEvent,
   ShiftState,
@@ -52,6 +55,9 @@ const RECENT_TAGSET_WINDOW = 3;
 /** 손님 응답 후보가 비어 있을 때의 대체 말풍선 */
 const SILENT_REPLY: CustomerReply = { ja: "…", ko: "…" };
 
+/** LISTEN(리스닝 전용) 단계가 열리는 최소 레벨 */
+export const LISTEN_MIN_LEVEL = 2;
+
 export interface CreateShiftOptions {
   content: WorkplaceContent;
   config: ShiftConfig;
@@ -60,6 +66,28 @@ export interface CreateShiftOptions {
   /** 해금 조건을 이미 통과한 레귤러들 (isRegularUnlocked 로 걸러서 넘긴다) */
   regularsAvailable: Regular[];
   unlockedTags: ItemTag[];
+  /** 플레이 중인 달(1~12). 시즌 상품·규칙에 쓴다. 생략하면 시즌 없음 */
+  month?: number;
+  /** 승급 시험이면 그 정보 */
+  exam?: ExamContext | null;
+}
+
+/** 이 달의 시즌 (없으면 null) */
+export function seasonFor(content: WorkplaceContent, month: number | undefined): Season | null {
+  if (month === undefined) return null;
+  return content.seasons.find((season) => season.month === month) ?? null;
+}
+
+/** 질문 단계가 세는 태그 — LISTEN 은 대신한 원래 질문의 태그 */
+export function stepTag(step: Pick<QuestionStep, "kind" | "target">): ItemTag | undefined {
+  if (step.kind === "LISTEN") return step.target ? QUESTION_TAG[step.target] : undefined;
+  return QUESTION_TAG[step.kind];
+}
+
+/** 손님 말풍선 — 관광객이고 영어(en)가 있으면 영어로 */
+export function localizeReply(reply: CustomerReply, customer: Pick<CustomerSpec, "tourist"> | null): CustomerReply {
+  if (customer?.tourist && reply.en) return { ...reply, ja: reply.en };
+  return reply;
 }
 
 /**
@@ -74,6 +102,9 @@ export function createShift(opts: CreateShiftOptions): ShiftState {
     started: false,
     activeTags: effectiveActiveTags(opts.config, opts.unlockedTags),
     regularPool: opts.regularsAvailable.map((regular) => regular.id),
+    month: opts.month ?? 0,
+    season: seasonFor(opts.content, opts.month),
+    exam: opts.exam ?? null,
     elapsedMs: 0,
     phase: "enter",
     customerIndex: 0,
@@ -126,11 +157,80 @@ function pickReply(replies: CustomerReply[] | undefined, rng: Rng): CustomerRepl
   return replies && replies.length > 0 ? rng.pick(replies) : SILENT_REPLY;
 }
 
+/** "{n}" 플레이스홀더에 담배 번호를 넣는다 */
+function fillNumber(reply: CustomerReply, number: string): CustomerReply {
+  return {
+    ja: reply.ja.replace(/\{n\}/g, number),
+    ko: reply.ko.replace(/\{n\}/g, number),
+    en: reply.en?.replace(/\{n\}/g, number),
+  };
+}
+
+/**
+ * 손님의 질문 큐를 만든다.
+ * - 돌발 이벤트 손님: 그 이벤트 질문 하나 (첫마디 prompt 포함)
+ * - 일반 손님: resolveCart 결과 중 이 레벨에 정답 문구가 있는 종류. TOBACCO_PICK 은 번호 합성, LISTEN 치환은 Lv2 부터 listenChance.
+ */
+function buildQueue(state: ShiftState, customer: CustomerSpec, rng: Rng, content: WorkplaceContent): QuestionStep[] {
+  const level = state.config.level;
+  if (customer.event) {
+    const phrase = findCorrectPhrase(customer.event, customer, content, level);
+    if (!phrase) return [];
+    const prompts = content.eventPrompts[customer.event];
+    return [{ kind: customer.event, correctPhraseId: phrase.id, prompt: pickReply(prompts, rng) }];
+  }
+
+  const rule = state.season?.rule ?? null;
+  const pointCard = rule?.kind === "pointCardAlways" ? true : rng.chance(state.config.pointCardChance);
+  const kinds = resolveCart(customer.items, {
+    level,
+    activeTags: state.activeTags,
+    pointCard,
+    tobaccoNumber: customer.tobaccoNumber,
+    rule,
+  });
+
+  const queue: QuestionStep[] = [];
+  for (const kind of kinds) {
+    if (kind === "TOBACCO_PICK") {
+      if (!customer.tobaccoNumber) continue;
+      const template = pickReply(content.tobaccoRequests, rng);
+      queue.push({
+        kind,
+        correctPhraseId: tobaccoPickId(customer.tobaccoNumber),
+        prompt: fillNumber(template, customer.tobaccoNumber),
+      });
+      continue;
+    }
+    const phrase = findCorrectPhrase(kind, customer, content, level);
+    if (phrase) queue.push({ kind, correctPhraseId: phrase.id });
+  }
+
+  // LISTEN 치환: 손님이 먼저 요구를 말하고 플레이어는 아이콘으로 반응한다
+  const listenChance = state.config.listenChance ?? 0;
+  if (level >= LISTEN_MIN_LEVEL && listenChance > 0 && rng.chance(listenChance)) {
+    const candidates = queue
+      .map((step, i) => ({ step, i }))
+      .filter(({ step }) => (LISTEN_TARGETS as readonly string[]).includes(step.kind))
+      .filter(({ step }) => (content.listenRequests[step.kind as ListenTarget]?.length ?? 0) > 0);
+    if (candidates.length > 0) {
+      const { step, i } = rng.pick(candidates);
+      const target = step.kind as ListenTarget;
+      queue[i] = {
+        kind: "LISTEN",
+        target,
+        correctPhraseId: listenId(target),
+        prompt: pickReply(content.listenRequests[target], rng),
+      };
+    }
+  }
+  return queue;
+}
+
 /* ───────────────────────── 손님 생성 ───────────────────────── */
 
 /**
- * index 번째 손님을 생성해 'enter' 로 들어간다.
- * 질문 큐는 resolveCart 결과 중 이 레벨에 정답 문구가 있는 종류만 남긴다.
+ * index 번째 손님을 생성해 'enter' 로 들어간다. 질문 큐는 buildQueue 가 만든다.
  */
 function spawnCustomer(state: ShiftState, index: number, content: WorkplaceContent): ShiftState {
   const rng = customerRng(state, index);
@@ -149,19 +249,10 @@ function spawnCustomer(state: ShiftState, index: number, content: WorkplaceConte
     regularsAvailable,
     regularsAlreadyMet: state.regularsMet,
     activeTags: state.activeTags,
+    month: state.month || undefined,
   });
 
-  const pointCard = rng.chance(state.config.pointCardChance);
-  const kinds = resolveCart(customer.items, {
-    level: state.config.level,
-    activeTags: state.activeTags,
-    pointCard,
-  });
-  const queue: QuestionStep[] = [];
-  for (const kind of kinds) {
-    const phrase = findCorrectPhrase(kind, customer, content, state.config.level);
-    if (phrase) queue.push({ kind, correctPhraseId: phrase.id });
-  }
+  const queue = buildQueue(state, customer, rng, content);
 
   return {
     ...state,
@@ -196,6 +287,7 @@ function openQuestion(state: ShiftState, content: WorkplaceContent): ShiftState 
     queue: state.queue.map((s) => s.kind),
     level: state.config.level,
     rng: optionsRng(state),
+    maskChance: state.config.maskChance,
   });
   return {
     ...state,
@@ -300,7 +392,7 @@ function applyCorrect(
   const reactionMs = state.elapsedMs - state.questionStartedAt;
   const grade = gradeSpeed(reactionMs, state.config.questionTimeSec * 1000);
   const attempt = state.wrongOnStep + 1;
-  const tag = QUESTION_TAG[step.kind];
+  const tag = stepTag(step);
   const combo = state.combo + 1;
 
   const entry: AnswerLog = {
@@ -331,7 +423,10 @@ function applyCorrect(
     phase: "reply",
     phaseRemainingMs: TIMING.REPLY_MS,
     mood: "happy",
-    bubble: pickReply(content.replies[step.kind], replyRng(state, attempt)),
+    bubble: localizeReply(
+      pickReply(content.replies[step.kind === "LISTEN" && step.target ? step.target : step.kind], replyRng(state, attempt)),
+      state.customer,
+    ),
     afterReply: "advance",
   };
 }
@@ -353,7 +448,7 @@ function applyWrong(
   if (!customer) return state;
   const reactionMs = state.elapsedMs - state.questionStartedAt;
   const attempt = state.wrongOnStep + 1;
-  const tag = QUESTION_TAG[step.kind];
+  const tag = stepTag(step);
   const rng = replyRng(state, attempt);
 
   const entry: AnswerLog = {
@@ -383,7 +478,7 @@ function applyWrong(
     return {
       ...base,
       mood: "confused",
-      bubble: pickReply(content.confusedReplies, rng),
+      bubble: localizeReply(pickReply(content.confusedReplies, rng), customer),
       phase: "reply",
       phaseRemainingMs: TIMING.CONFUSED_MS,
       afterReply: "retry",
@@ -398,7 +493,7 @@ function applyWrong(
       missed: state.missed + 1,
       consecutiveMissed: state.consecutiveMissed + 1,
       mood: "gone",
-      bubble: pickReply(content.leaveReplies, rng),
+      bubble: localizeReply(pickReply(content.leaveReplies, rng), customer),
       phase: "leave",
       phaseRemainingMs: TIMING.LEAVE_MS,
       afterReply: "advance",
@@ -410,7 +505,10 @@ function applyWrong(
     ...base,
     irritation,
     mood: "annoyed",
-    bubble: content.hints[step.kind] ?? pickReply(content.confusedReplies, rng),
+    bubble: localizeReply(
+      content.hints[step.kind === "LISTEN" && step.target ? step.target : step.kind] ?? pickReply(content.confusedReplies, rng),
+      customer,
+    ),
     phase: "reply",
     phaseRemainingMs: TIMING.HINT_MS,
     afterReply: "retry",
@@ -523,7 +621,7 @@ export function hardestPhrase(log: AnswerLog[]): HardestPhrase | null {
   return best;
 }
 
-/** 이 시프트에서 처음으로 Perfect 를 낸 태그 (기존 perfectedTags 에 없는 것) */
+/** 이 시프트에서 처음으로 Perfect 를 낸 태그 (기존 perfectedTags 에 없는 것). LISTEN 은 태그를 모르므로 제외 */
 export function firstSuccessTagsOf(log: AnswerLog[], perfectedTags: ItemTag[]): ItemTag[] {
   const out: ItemTag[] = [];
   for (const entry of log) {
@@ -570,8 +668,37 @@ export function summarize(state: ShiftState, ctx: SummarizeContext): ShiftSummar
     firstSuccessTags,
     regularsMet: state.regularsMet,
     endedBy: state.endedBy ?? "customers",
+    exam: state.exam
+      ? {
+          rank: state.exam.rank,
+          comboRequired: state.exam.comboRequired,
+          passed: state.maxCombo >= state.exam.comboRequired && state.missed === 0,
+        }
+      : null,
+    events: state.log.filter((entry, i, arr) => {
+      // 돌발 이벤트 손님 수 = 이벤트 종류 답변 중 손님별 첫 기록
+      const isEvent = (EVENT_SET as ReadonlySet<string>).has(entry.kind);
+      return isEvent && arr.findIndex((e) => e.customerIndex === entry.customerIndex) === i;
+    }).length,
     answers: state.log,
   };
+}
+
+const EVENT_SET: ReadonlySet<QuestionKind> = new Set<QuestionKind>([
+  "DIRECTIONS",
+  "TOILET",
+  "COPIER",
+  "ATM",
+  "DELIVERY",
+  "UTILITY_BILL",
+  "TICKET",
+]);
+
+/** 현재 질문 단계의 손님 한마디(LISTEN 요구·담배 번호·이벤트 첫마디). 관광객이면 영어 */
+export function currentPrompt(state: ShiftState): CustomerReply | null {
+  const step = state.queue[state.stepIndex];
+  if (!step?.prompt) return null;
+  return localizeReply(step.prompt, state.customer);
 }
 
 /** 현재 질문 종류 (question/reply 단계에서 UI 가 쓴다). 없으면 null */

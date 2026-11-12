@@ -5,9 +5,14 @@
  * - 태그 → 한자 배지, 결제 수단 라벨, 속도 등급 라벨, 매장 안 시계
  */
 import type {
+  AnswerOption,
   CustomerReply,
   CustomerSpec,
+  Direction,
+  EventKind,
   ItemTag,
+  ManagerLine,
+  ManagerMoment,
   PaymentMethod,
   RankDef,
   RankId,
@@ -19,7 +24,7 @@ import type {
   SpeedGrade,
   WorkplaceContent,
 } from "@/engine/types";
-import { isRegularUnlocked, rankFor } from "@/engine/progression";
+import { isRegularUnlocked, rankAtLeast } from "@/engine/progression";
 import { createRng, hashSeed } from "@/engine/rng";
 import type { PlayerProfile } from "@/shared/player";
 import type { IconName } from "@/components/ui";
@@ -35,13 +40,28 @@ export const SPEAKING_LEVEL = 3;
 /** 말하기 모드 해금 여부 — 선배 이상이거나, 레벨 3(夕) 시프트 */
 export function isSpeakingUnlocked(profile: PlayerProfile, config: ShiftConfig, ranks: RankDef[]): boolean {
   if (config.level >= SPEAKING_LEVEL) return true;
-  const current = rankFor(profile.totalShifts, ranks).current.id;
-  const idx = ranks.findIndex((r) => r.id === current);
-  const need = ranks.findIndex((r) => r.id === SPEAKING_RANK);
-  return idx >= 0 && need >= 0 && idx >= need;
+  return rankAtLeast(profile.rank, SPEAKING_RANK, ranks);
 }
 /** 선택지 한국어 뜻 표시 여부 저장 키 */
 export const SHOW_KO_KEY = "baito.showKo";
+/** 선택지 후리가나(かな) 표시 여부 저장 키 — 값이 있으면 레벨 기본값보다 우선 */
+export const SHOW_KANA_KEY = "baito.showKana";
+/** 이 레벨까지는 후리가나가 기본으로 켜진다 (Lv3 부터 기본 OFF) */
+export const KANA_DEFAULT_MAX_LEVEL = 2;
+
+/** 후리가나 기본값 — 저장값이 있으면 그것, 없으면 레벨 기준 */
+export function defaultShowKana(level: number, stored: string | null): boolean {
+  if (stored === "1") return true;
+  if (stored === "0") return false;
+  return level <= KANA_DEFAULT_MAX_LEVEL;
+}
+
+/** 점장 대사 중 해당 순간(when)의 것을 시드로 하나 고른다. 없으면 null */
+export function pickManagerLine(content: WorkplaceContent, when: ManagerMoment, seed: number): ManagerLine | null {
+  const pool = content.manager.filter((line) => line.when === when);
+  if (pool.length === 0) return null;
+  return createRng(hashSeed(seed, "manager", when)).pick(pool);
+}
 
 /** 지금 직급·시간대·달에 등장 가능한 레귤러 */
 export function availableRegulars(
@@ -50,9 +70,8 @@ export function availableRegulars(
   slot: ShiftSlot,
   month: number,
 ): Regular[] {
-  const rank = rankFor(profile.totalShifts, content.ranks).current.id;
   return content.regulars.filter((regular) =>
-    isRegularUnlocked(regular, { rank, slot, month, ranks: content.ranks }),
+    isRegularUnlocked(regular, { rank: profile.rank, slot, month, ranks: content.ranks }),
   );
 }
 
@@ -109,6 +128,8 @@ export const TAG_KANJI: Record<ItemTag, { kanji: string; ko: string }> = {
   alcohol: { kanji: "酒", ko: "술" },
   tobacco: { kanji: "煙", ko: "담배" },
   fragile_hot: { kanji: "熱", ko: "뜨거운 음료" },
+  oden: { kanji: "お", ko: "오뎅" },
+  fried: { kanji: "揚", ko: "튀김" },
 };
 
 /** 손님이 내민 결제 수단 */
@@ -118,6 +139,34 @@ export const PAYMENT_LABEL: Record<PaymentMethod, { ja: string; ko: string; icon
   qr: { ja: "QR", ko: "QR 결제", icon: "qr" },
   credit: { ja: "クレジット", ko: "신용카드", icon: "card" },
 };
+
+/** 돌발 이벤트 손님 → 카운터 위 한자 배지 (길 묻기는 배지 대신 방향 표지) */
+export const EVENT_KANJI: Record<Exclude<EventKind, "DIRECTIONS">, { kanji: string; ja: string; ko: string }> = {
+  TOILET: { kanji: "手洗", ja: "お手洗い", ko: "화장실" },
+  COPIER: { kanji: "複写", ja: "コピー機", ko: "복사기" },
+  ATM: { kanji: "ATM", ja: "ATM", ko: "현금 인출기" },
+  DELIVERY: { kanji: "宅配", ja: "宅配便", ko: "택배" },
+  UTILITY_BILL: { kanji: "払込", ja: "払込票", ko: "공공요금 납부" },
+  TICKET: { kanji: "券", ja: "チケット", ko: "티켓" },
+};
+
+/** 길 묻기 방향 → 표지판 라벨과 화살표 회전(위 = 0°) */
+export const DIRECTION_LABEL: Record<Direction, { ja: string; ko: string; rotate: number }> = {
+  straight: { ja: "まっすぐ", ko: "직진", rotate: 0 },
+  right: { ja: "右", ko: "오른쪽", rotate: 90 },
+  back: { ja: "後ろ", ko: "뒤쪽", rotate: 180 },
+  left: { ja: "左", ko: "왼쪽", rotate: -90 },
+};
+
+/** 뒷벽 담배 선반에 보이는 번호 후보 — 지금 선택지에 있는 번호는 빼서 정답이 새지 않게 한다 */
+const TOBACCO_SHELF_BASE = ["3", "8", "14", "27", "35", "46", "52", "69", "71", "88"] as const;
+export const TOBACCO_SHELF_SLOTS = 5;
+
+export function tobaccoShelfNumbers(options: AnswerOption[], hidden: string | null): string[] {
+  const exclude = new Set<string>(options.map((option) => option.ja.replace(/\D/g, "")));
+  if (hidden) exclude.add(hidden);
+  return TOBACCO_SHELF_BASE.filter((n) => !exclude.has(n)).slice(0, TOBACCO_SHELF_SLOTS);
+}
 
 /** 속도 등급 표시 — 플레이어에게 보이는 유일한 "채점" */
 export const GRADE_LABEL: Record<SpeedGrade, string> = {

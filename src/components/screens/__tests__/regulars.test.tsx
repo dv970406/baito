@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { konbini } from "@/content";
 import type { PlayerProfile } from "@/shared/player";
 import { createDefaultProfile, useGameStore } from "@/store/gameStore";
-import { RegularsScreen } from "../RegularsScreen";
+import { LONG_PRESS_MS, RegularsScreen, findPhraseFor, seasonBadge } from "../RegularsScreen";
 
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode } & AnchorHTMLAttributes<HTMLAnchorElement>) => (
@@ -51,7 +51,7 @@ describe("RegularsScreen", () => {
 
   it("만남 수와 상태별 카드(만남·실루엣·잠김)를 그린다", () => {
     const { container } = render(<RegularsScreen />);
-    expect(screen.getByText(/1 \/ 12 만남/)).toBeTruthy();
+    expect(screen.getByText(new RegExp(`1 / ${konbini.regulars.length} 만남`))).toBeTruthy();
 
     // 만난 단골 — 이름·역할·호감도·현재 대사·처음 들은 말
     const met = container.querySelector('[data-regular="tanaka"][data-status="met"]');
@@ -73,7 +73,7 @@ describe("RegularsScreen", () => {
     expect(screen.getByText("저녁 시프트")).toBeTruthy();
     expect(screen.getByText("심야 시프트")).toBeTruthy();
     expect(screen.getByText("선배 승급")).toBeTruthy();
-    expect(screen.getByText("12월 시즌")).toBeTruthy();
+    expect(screen.getAllByText("12월 시즌").length).toBeGreaterThan(0);
 
     // 전체 12명이 어느 상태로든 한 번씩 등장
     const metCount = container.querySelectorAll('[data-status="met"]').length;
@@ -136,6 +136,89 @@ describe("RegularsScreen", () => {
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(panel.hidden).toBe(true);
+  });
+
+  it("처음 들은 말 카드는 길게 누르면(500ms) 뜻이 펼쳐지고, 짧게 누르면 그대로, Enter 로도 토글된다", () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(<RegularsScreen />);
+      const met = container.querySelector('[data-regular="tanaka"]') as HTMLElement;
+      act(() => {
+        fireEvent.click(within(met).getByRole("button", { expanded: false }));
+      });
+      const card = within(met).getByRole("button", { name: "「番号で」 뜻 보기 (길게 누르기)" });
+      expect(card.getAttribute("aria-expanded")).toBe("false");
+      const detail = document.getElementById(card.getAttribute("aria-controls") as string) as HTMLElement;
+      expect(detail.hidden).toBe(true);
+
+      // 짧게 누르기 — 펼치지 않는다
+      fireEvent.pointerDown(card);
+      act(() => {
+        vi.advanceTimersByTime(LONG_PRESS_MS - 100);
+      });
+      fireEvent.pointerUp(card);
+      act(() => {
+        vi.advanceTimersByTime(LONG_PRESS_MS);
+      });
+      expect(card.getAttribute("aria-expanded")).toBe("false");
+
+      // 길게 누르기 — 펼친다
+      fireEvent.pointerDown(card);
+      act(() => {
+        vi.advanceTimersByTime(LONG_PRESS_MS);
+      });
+      expect(card.getAttribute("aria-expanded")).toBe("true");
+      expect(detail.hidden).toBe(false);
+      expect(within(detail).getByText("번호로")).toBeTruthy();
+
+      // Enter 로 닫기
+      fireEvent.keyDown(card, { key: "Enter" });
+      expect(card.getAttribute("aria-expanded")).toBe("false");
+
+      // 못 들은 말은 비활성 버튼
+      const unheard = within(met).getByText("「袋いい」").closest("button") as HTMLButtonElement;
+      expect(unheard.disabled).toBe(true);
+      expect(unheard.getAttribute("aria-expanded")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("findPhraseFor — 접객 문구와 같은 말이면 읽기·단어 분해를 빌려 온다", () => {
+    const warm = konbini.phrases.find((p) => p.id === "warm.1");
+    expect(warm).toBeTruthy();
+    const found = findPhraseFor({ ja: warm?.ja ?? "", ko: "데워 드릴까요?" }, konbini.phrases);
+    expect(found?.id).toBe("warm.1");
+    expect(found?.parts).toBeTruthy();
+    expect(findPhraseFor({ ja: "番号で", ko: "번호로" }, konbini.phrases)).toBeUndefined();
+  });
+
+  it("시즌 한정 단골은 「N월 한정」 배지, 심야 단골은 深夜 칩", () => {
+    const santa = konbini.regulars.find((r) => r.id === "santa");
+    expect(santa && seasonBadge(santa)).toBe("12월 한정");
+    const tanaka = konbini.regulars.find((r) => r.id === "tanaka");
+    expect(tanaka && seasonBadge(tanaka)).toBeNull();
+
+    // 잠긴 산타 카드에는 캡션으로, 만난 뒤에는 배지로 (12월이 아니면 잠김 표기)
+    const { container } = render(<RegularsScreen />);
+    expect(screen.getAllByText("12월 한정").length).toBeGreaterThan(0);
+    cleanup();
+    useGameStore.setState({
+      profile: {
+        ...fixtureProfile(),
+        regulars: {
+          santa: { affinity: 1, metCount: 1, lastMetDate: "2026-12-24", firstWordsHeard: [] },
+        },
+      },
+    });
+    const second = render(<RegularsScreen />);
+    const met = second.container.querySelector('[data-regular="santa"][data-status="met"]') as HTMLElement;
+    const badge = within(met).getByTestId("season-badge");
+    const month = new Date().getMonth() + 1;
+    expect(badge.textContent).toBe(month === 12 ? "12월 한정" : "12월 한정 · 잠김");
+    expect(container).toBeTruthy();
+    // 심야 필터 칩이 있다
+    expect(screen.getByRole("button", { name: /深/ })).toBeTruthy();
   });
 
   it("탭바는 도감 탭이 활성이다", () => {

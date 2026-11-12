@@ -11,10 +11,11 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { ItemTag, ShiftSummary, TagWeights } from "@/engine/types";
 import { ITEM_TAGS } from "@/engine/types";
-import { bumpAffinity, updateStreak } from "@/engine/progression";
+import { bumpAffinity, updateStreak, weekStartOf } from "@/engine/progression";
 import {
   DEFAULT_WAGE,
   LEAVES_PER_MONTH,
+  normalizeProfile,
   type PlayerProfile,
   type RegularState,
 } from "@/shared/player";
@@ -86,6 +87,8 @@ export function createDefaultProfile(now: Date = new Date()): PlayerProfile {
     name: "알바생",
     wage: DEFAULT_WAGE,
     totalShifts: 0,
+    rank: "shinjin",
+    examWeek: null,
     streak: 0,
     lastPlayDate: null,
     leavesLeft: LEAVES_PER_MONTH,
@@ -131,9 +134,15 @@ export function applyShiftToProfile(profile: PlayerProfile, input: CompleteShift
 
   const todayProgress =
     profile.today.date === today ? profile.today : { date: today, completed: [] };
-  const completed = todayProgress.completed.includes(summary.slot)
-    ? todayProgress.completed
-    : [...todayProgress.completed, summary.slot];
+  // 승급 시험은 오늘 시프트 표의 칸을 채우지 않는다(추가 근무)
+  const completed =
+    summary.exam || todayProgress.completed.includes(summary.slot)
+      ? todayProgress.completed
+      : [...todayProgress.completed, summary.slot];
+
+  // 승급 시험: 이번 주 응시 기록, 합격이면 직급 상승
+  const examWeek = summary.exam ? weekStartOf(today) : profile.examWeek;
+  const rank = summary.exam?.passed ? summary.exam.rank : profile.rank;
 
   const regulars: Record<string, RegularState> = { ...profile.regulars };
   for (const id of input.regularsMet) {
@@ -154,6 +163,8 @@ export function applyShiftToProfile(profile: PlayerProfile, input: CompleteShift
     ...profile,
     wage: summary.wageAfter,
     totalShifts: profile.totalShifts + 1,
+    rank,
+    examWeek,
     streak: streak.streak,
     lastPlayDate: today,
     leavesLeft: streak.leavesLeft,
@@ -198,7 +209,7 @@ export const useGameStore = create<GameStore>()(
         if (new Date(server.updatedAt).getTime() <= new Date(local.updatedAt).getTime()) {
           return false;
         }
-        set({ profile: server });
+        set({ profile: normalizeProfile(server) });
         return true;
       },
 
@@ -247,6 +258,15 @@ export const useGameStore = create<GameStore>()(
         pendingSessions: s.pendingSessions,
         audioEnabled: s.audioEnabled,
       }),
+      /** 예전 버전 세이브(새 태그·직급 필드 없음)를 현재 계약으로 맞춘다 */
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<GameState>;
+        return {
+          ...current,
+          ...saved,
+          profile: normalizeProfile({ ...current.profile, ...(saved.profile ?? {}) }),
+        };
+      },
       onRehydrateStorage: () => (state) => {
         state?.markHydrated();
       },

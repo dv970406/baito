@@ -4,8 +4,8 @@
  */
 import { LEAVES_PER_MONTH } from "@/shared/player";
 import type { RegularState, TodayProgress } from "@/shared/player";
-import { SHIFT_SLOTS } from "./types";
-import type { ItemTag, RankDef, RankId, Regular, ShiftSlot } from "./types";
+import { DAILY_SLOTS } from "./types";
+import type { ExamRule, ItemTag, RankDef, RankId, Regular, ShiftConfig, ShiftSlot, ShiftSummary } from "./types";
 
 /* ───────────────────────── 시급 ───────────────────────── */
 
@@ -55,10 +55,12 @@ export interface RankProgress {
   current: RankDef;
   /** 다음 직급. 최고 직급이면 null */
   next: RankDef | null;
-  /** 다음 직급까지 남은 시프트 수 (최고 직급이면 0) */
+  /** 다음 직급 시험까지 남은 시프트 수 (최고 직급이면 0) */
   shiftsToNext: number;
   /** 현재 직급 구간 안에서의 진행도 0~1 (최고 직급이면 1) */
   progress: number;
+  /** 시프트 수를 채워 승급 시험을 볼 수 있는 상태 */
+  examReady: boolean;
 }
 
 /** shiftsRequired 오름차순으로 정렬된 복사본 */
@@ -66,7 +68,22 @@ function sortedRanks(ranks: RankDef[]): RankDef[] {
   return ranks.slice().sort((a, b) => a.shiftsRequired - b.shiftsRequired);
 }
 
-/** 누적 시프트 수 → 현재 직급과 다음 직급까지의 진행도 */
+/** 직급 ID → 정렬된 직급 목록에서의 인덱스. 없으면 -1 */
+export function rankIndex(rankId: RankId, ranks: RankDef[]): number {
+  return sortedRanks(ranks).findIndex((rank) => rank.id === rankId);
+}
+
+/** a 직급이 b 직급 이상인가 */
+export function rankAtLeast(a: RankId, b: RankId, ranks: RankDef[]): boolean {
+  const have = rankIndex(a, ranks);
+  const need = rankIndex(b, ranks);
+  return have >= 0 && need >= 0 && have >= need;
+}
+
+/**
+ * 누적 시프트 수만으로 유도한 직급 — 시험 제도 이전 세이브(rank 없음)를 변환할 때 쓴다.
+ * shiftsRequired 를 채운 가장 높은 직급.
+ */
 export function rankFor(totalShifts: number, ranks: RankDef[]): RankProgress {
   const sorted = sortedRanks(ranks);
   if (sorted.length === 0) {
@@ -76,10 +93,24 @@ export function rankFor(totalShifts: number, ranks: RankDef[]): RankProgress {
   for (let i = 0; i < sorted.length; i++) {
     if (totalShifts >= sorted[i].shiftsRequired) currentIdx = i;
   }
-  const current = sorted[currentIdx];
-  const next = currentIdx + 1 < sorted.length ? sorted[currentIdx + 1] : null;
+  return rankOf(sorted[currentIdx].id, totalShifts, ranks);
+}
+
+/**
+ * 현재 직급(명시)과 누적 시프트 수 → 다음 직급까지의 진행도.
+ * 승급은 시프트 수가 아니라 승급 시험(점장 점검 시프트) 합격으로만 일어난다.
+ * 시프트 수를 채우면 examReady, 시험에 붙으면 profile.rank 가 올라간다.
+ */
+export function rankOf(rankId: RankId, totalShifts: number, ranks: RankDef[]): RankProgress {
+  const sorted = sortedRanks(ranks);
+  if (sorted.length === 0) {
+    throw new Error("rankOf: 직급 정의가 비어 있다");
+  }
+  const idx = Math.max(0, sorted.findIndex((rank) => rank.id === rankId));
+  const current = sorted[idx];
+  const next = idx + 1 < sorted.length ? sorted[idx + 1] : null;
   if (!next) {
-    return { current, next: null, shiftsToNext: 0, progress: 1 };
+    return { current, next: null, shiftsToNext: 0, progress: 1, examReady: false };
   }
   const span = Math.max(1, next.shiftsRequired - current.shiftsRequired);
   const done = Math.max(0, totalShifts - current.shiftsRequired);
@@ -88,18 +119,55 @@ export function rankFor(totalShifts: number, ranks: RankDef[]): RankProgress {
     next,
     shiftsToNext: Math.max(0, next.shiftsRequired - totalShifts),
     progress: Math.min(1, done / span),
+    examReady: totalShifts >= next.shiftsRequired,
   };
 }
 
-/** 도달한 모든 직급의 unlocksTags 합집합 */
-export function unlockedTags(totalShifts: number, ranks: RankDef[]): ItemTag[] {
+/** 현재 직급까지 도달한 모든 직급의 unlocksTags 합집합 */
+export function unlockedTags(rankId: RankId, ranks: RankDef[]): ItemTag[] {
+  const sorted = sortedRanks(ranks);
+  const idx = sorted.findIndex((rank) => rank.id === rankId);
   const set = new Set<ItemTag>();
-  for (const rank of ranks) {
-    if (totalShifts >= rank.shiftsRequired) {
-      for (const tag of rank.unlocksTags) set.add(tag);
-    }
+  for (let i = 0; i <= idx; i++) {
+    for (const tag of sorted[i].unlocksTags) set.add(tag);
   }
   return Array.from(set);
+}
+
+/* ───────────────────────── 승급 시험 ───────────────────────── */
+
+export interface ExamInput {
+  rank: RankId;
+  totalShifts: number;
+  /** 마지막으로 시험을 본 주(월요일 YYYY-MM-DD). 같은 주에는 다시 볼 수 없다 */
+  examWeek: string | null;
+}
+
+export interface ExamAvailability {
+  /** 시험으로 올라갈 다음 직급. 최고 직급이면 null */
+  target: RankDef | null;
+  rule: ExamRule | null;
+  /** 시프트 수를 채웠는가 */
+  ready: boolean;
+  /** 이번 주에 이미 봤는가 */
+  takenThisWeek: boolean;
+  /** 지금 볼 수 있는가 */
+  available: boolean;
+}
+
+/** 승급 시험을 볼 수 있는지 — 다음 직급의 shiftsRequired 를 채웠고, 이번 주에 아직 안 봤을 때 */
+export function examAvailability(input: ExamInput, ranks: RankDef[], weekStart: string): ExamAvailability {
+  const progress = rankOf(input.rank, input.totalShifts, ranks);
+  const target = progress.next;
+  const rule = target?.exam ?? null;
+  const ready = Boolean(target && rule && progress.examReady);
+  const takenThisWeek = input.examWeek === weekStart;
+  return { target, rule, ready, takenThisWeek, available: ready && !takenThisWeek };
+}
+
+/** 시험 합격 판정 — 최고 콤보가 기준 이상이고 이탈 0 */
+export function examPassed(summary: Pick<ShiftSummary, "maxCombo" | "missed">, rule: ExamRule): boolean {
+  return summary.maxCombo >= rule.combo && summary.missed === 0;
 }
 
 /* ───────────────────────── 날짜 유틸 ───────────────────────── */
@@ -121,6 +189,19 @@ export function dayDiff(fromYmd: string, toYmd: string): number {
 /** 'YYYY-MM-DD' → 'YYYY-MM' */
 function monthOf(ymd: string): string {
   return ymd.slice(0, 7);
+}
+
+/** 'YYYY-MM-DD' 가 속한 주의 월요일 'YYYY-MM-DD' (승급 시험·리그의 주 단위) */
+export function weekStartOf(ymd: string): string {
+  const days = ymdToDays(ymd);
+  // 1970-01-01 은 목요일(4). 월=0 … 일=6
+  const dow = (days + 3) % 7;
+  const monday = days - ((dow % 7) + 7) % 7;
+  const d = new Date(monday * 86_400_000);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
 }
 
 /* ───────────────────────── 스트릭 ───────────────────────── */
@@ -200,11 +281,6 @@ export interface UnlockContext {
   ranks: RankDef[];
 }
 
-/** 직급 ID → 정렬된 직급 목록에서의 인덱스. 없으면 -1 */
-function rankIndex(rankId: RankId, ranks: RankDef[]): number {
-  return sortedRanks(ranks).findIndex((rank) => rank.id === rankId);
-}
-
 /**
  * 이 레귤러가 지금 등장할 수 있는가.
  * open → 항상 / slot → 그 시간대를 플레이 중일 때 / rank → 현재 직급이 요구 직급 이상 / season → 그 달
@@ -234,22 +310,42 @@ function completedToday(today: TodayProgress, todayYmd: string): ShiftSlot[] {
   return today.date === todayYmd ? today.completed : [];
 }
 
+export interface SlotContext {
+  /** 현재 직급 — requiredRank 가 있는 추가 시프트(심야) 판정 */
+  rank?: RankId;
+  ranks?: RankDef[];
+  shifts?: Record<ShiftSlot, ShiftConfig>;
+}
+
+/** 추가 시프트(심야)가 직급상 열려 있는가 */
+export function isOptionalSlotUnlocked(config: ShiftConfig, ctx: SlotContext): boolean {
+  if (!config.requiredRank) return true;
+  if (!ctx.rank || !ctx.ranks) return false;
+  return rankAtLeast(ctx.rank, config.requiredRank, ctx.ranks);
+}
+
 /**
  * 지금 들어갈 수 있는 시프트.
  * asa 는 항상, hiru 는 asa 완료 후, yoru 는 hiru 완료 후 열린다. 완료한 슬롯도 목록에 남는다(재플레이 허용).
+ * 추가 시프트(optional, 심야)는 기본 3개를 다 끝내고 직급 조건을 채웠을 때 열린다.
  */
-export function availableShiftSlots(today: TodayProgress, todayYmd: string): ShiftSlot[] {
+export function availableShiftSlots(today: TodayProgress, todayYmd: string, ctx: SlotContext = {}): ShiftSlot[] {
   const done = completedToday(today, todayYmd);
   const out: ShiftSlot[] = ["asa"];
   if (done.includes("asa")) out.push("hiru");
   if (done.includes("hiru")) out.push("yoru");
+  if (ctx.shifts && DAILY_SLOTS.every((slot) => done.includes(slot))) {
+    for (const config of Object.values(ctx.shifts)) {
+      if (config.optional && isOptionalSlotUnlocked(config, ctx)) out.push(config.slot);
+    }
+  }
   return out;
 }
 
-/** 아직 완료하지 않은 첫 시프트. 셋 다 끝났으면 null */
+/** 아직 완료하지 않은 첫 기본 시프트. 셋 다 끝났으면 null (추가 시프트는 세지 않는다) */
 export function nextShiftSlot(today: TodayProgress, todayYmd: string): ShiftSlot | null {
   const done = completedToday(today, todayYmd);
-  for (const slot of SHIFT_SLOTS) {
+  for (const slot of DAILY_SLOTS) {
     if (!done.includes(slot)) return slot;
   }
   return null;

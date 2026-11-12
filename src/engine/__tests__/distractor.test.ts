@@ -63,6 +63,14 @@ describe("renderPhrase / formatYen", () => {
     expect(r.ko).toBe("합계 678엔입니다");
   });
 
+  it("읽기(후리가나) 템플릿의 {total}えん 은 えん 을 두 번 붙이지 않는다", () => {
+    const total = { ...CONTENT.phrases.find((p) => p.id === "total")!, reading: "ごうけいで {total}えんです" };
+    const r = renderPhrase(total, customerOf([ITEMS.bento, ITEMS.ice]));
+    expect(r.reading).toBe("ごうけいで 678えんです");
+    const bare = { ...total, reading: "ごうけいで {total}です" };
+    expect(renderPhrase(bare, customerOf([ITEMS.bento])).reading).toBe("ごうけいで 498えんです");
+  });
+
   it("템플릿에 이미 円 이 있으면 숫자만 넣는다", () => {
     const phrase: Phrase = { id: "x", kind: "TOTAL", category: "amount", ja: "{total}円になります", ko: "{total}엔입니다", level: 1 };
     const r = renderPhrase(phrase, customerOf([ITEMS.bento, ITEMS.bento, ITEMS.bento])); // 1494

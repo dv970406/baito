@@ -64,9 +64,9 @@ describe("rankFor / unlockedTags", () => {
   });
 
   it("해금 태그는 도달 직급들의 합집합", () => {
-    expect(unlockedTags(0, ranks)).toEqual([]);
-    expect(unlockedTags(3, ranks)).toEqual(["alcohol"]);
-    expect(unlockedTags(7, ranks).sort()).toEqual(["alcohol", "tobacco"]);
+    expect(unlockedTags("shinjin", ranks)).toEqual([]);
+    expect(unlockedTags("ippan", ranks)).toEqual(["alcohol"]);
+    expect(unlockedTags("senpai", ranks).sort()).toEqual(["alcohol", "tobacco"]);
   });
 });
 

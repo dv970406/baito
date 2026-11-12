@@ -1,4 +1,11 @@
 import type { WorkplaceContent } from "@/engine/types";
+import {
+  konbiniEventPrompts,
+  konbiniListenRequests,
+  konbiniListenTargets,
+  konbiniSeasons,
+  konbiniTobaccoRequests,
+} from "./extras";
 import { konbiniItems } from "./items";
 import { konbiniManager } from "./manager";
 import { konbiniPhrases } from "./phrases";
@@ -25,6 +32,11 @@ export const konbini: WorkplaceContent = {
   confusedReplies: konbiniConfusedReplies,
   hints: konbiniHints,
   leaveReplies: konbiniLeaveReplies,
+  listenRequests: konbiniListenRequests,
+  listenTargets: konbiniListenTargets,
+  eventPrompts: konbiniEventPrompts,
+  tobaccoRequests: konbiniTobaccoRequests,
+  seasons: konbiniSeasons,
 };
 
 export { konbiniItems, konbiniPhrases, konbiniRegulars, konbiniManager, konbiniRanks, konbiniShifts };

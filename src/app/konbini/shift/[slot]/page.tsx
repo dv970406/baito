@@ -1,15 +1,11 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { SHIFT_SLOTS, type ShiftSlot } from "@/engine/types";
 import { GameScreen } from "@/components/game/GameScreen";
+import { GAME_SLOTS, isGameSlot } from "@/components/game/gameSlot";
 
-/** 01 KONBINI 인게임 — /konbini/shift/asa|hiru|yoru */
+/** 01 KONBINI 인게임 — /konbini/shift/asa|hiru|yoru|shinya, 승급 시험은 /konbini/shift/exam */
 export function generateStaticParams() {
-  return SHIFT_SLOTS.map((slot) => ({ slot }));
-}
-
-function isShiftSlot(value: string): value is ShiftSlot {
-  return (SHIFT_SLOTS as readonly string[]).includes(value);
+  return GAME_SLOTS.map((slot) => ({ slot }));
 }
 
 /**
@@ -18,7 +14,7 @@ function isShiftSlot(value: string): value is ShiftSlot {
  */
 async function ShiftBySlot({ params }: { params: PageProps<"/konbini/shift/[slot]">["params"] }) {
   const { slot } = await params;
-  if (!isShiftSlot(slot)) notFound();
+  if (!isGameSlot(slot)) notFound();
   return <GameScreen slot={slot} />;
 }
 

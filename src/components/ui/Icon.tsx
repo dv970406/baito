@@ -27,7 +27,15 @@ export type IconName =
   | "phone"
   | "clock"
   | "refresh"
-  | "play";
+  | "play"
+  /* 리스닝 선택지(손님 요구) 아이콘 — 데우기 · 봉투 · 젓가락 · 스푼 · 빨대 */
+  | "warm"
+  | "bag"
+  | "chopsticks"
+  | "spoon"
+  | "straw"
+  | "download"
+  | "image";
 
 export type IconSize = 14 | 16 | 18 | 20 | 22 | 26 | 30 | 32;
 
@@ -110,6 +118,45 @@ const ICON_PATHS: Record<IconName, React.ReactNode> = {
   ),
   refresh: <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
   play: <path d="M6 4l14 8-14 8z" />,
+  /* 데우기: 그릇 위로 올라오는 김 세 줄 */
+  warm: (
+    <>
+      <path d="M4 13h16v2a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z" />
+      <path d="M8 9c0-1.5 1-2 1-3.5S8 3.5 8 2.5M12 9c0-1.5 1-2 1-3.5s-1-2-1-3M16 9c0-1.5 1-2 1-3.5s-1-2-1-3" />
+    </>
+  ),
+  /* 봉투: 손잡이 달린 레지 봉투 */
+  bag: (
+    <>
+      <path d="M5 8h14l-1.2 12.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8z" />
+      <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+    </>
+  ),
+  /* 젓가락: 살짝 벌어진 두 가닥 */
+  chopsticks: <path d="M7 3l4 18M14 3l-1 18M7 3h1.5M14 3h1.5" />,
+  /* 스푼: 타원 머리 + 손잡이 */
+  spoon: (
+    <>
+      <ellipse cx="12" cy="7" rx="4" ry="5" />
+      <path d="M12 12v10" />
+    </>
+  ),
+  /* 빨대: 꺾인 빨대 + 컵 테두리 */
+  download: <path d="M12 3v12M7 10l5 5 5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />,
+  image: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="1.6" />
+      <path d="M21 16l-5-5-8 8M3 18l4-4 3 3" />
+    </>
+  ),
+  straw: (
+    <>
+      <path d="M14 3l-1 2-3 17" />
+      <path d="M14 3l4 1" />
+      <path d="M5 11h14l-1 10H6z" />
+    </>
+  ),
 };
 
 export interface IconProps extends Omit<SVGProps<SVGSVGElement>, "name" | "width" | "height"> {

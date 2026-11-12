@@ -3,16 +3,19 @@
  * 타입이 어긋나면 아래 `satisfies` 단언에서 컴파일이 실패하므로, 계약이 바뀌면 여기도 함께 고친다.
  */
 import { z } from "zod";
-import { ITEM_TAGS, QUESTION_ORDER, SHIFT_SLOTS } from "@/engine/types";
-import type { AnswerLog, HardestPhrase, ShiftSummary } from "@/engine/types";
-import type { PlayerProfile, RegularState, TodayProgress } from "@/shared/player";
+import { DIRECTIONS, ITEM_TAGS, QUESTION_KINDS, RANK_IDS, SHIFT_SLOTS } from "@/engine/types";
+import type { AnswerLog, ExamResult, HardestPhrase, ShiftSummary } from "@/engine/types";
+import { normalizeProfile, type PlayerProfile, type RegularState, type TodayProgress } from "@/shared/player";
 import type { CreateSessionBody } from "@/shared/api";
 
 /* ───────────────────────── 공통 조각 ───────────────────────── */
 
 const itemTagSchema = z.enum(ITEM_TAGS);
 const shiftSlotSchema = z.enum(SHIFT_SLOTS);
-const questionKindSchema = z.enum(QUESTION_ORDER);
+const questionKindSchema = z.enum(QUESTION_KINDS);
+const rankIdSchema = z.enum(RANK_IDS);
+// 길 묻기 방향 — 현재 스키마에서는 쓰지 않지만 계약 일치 확인용으로 유지
+void DIRECTIONS;
 const workplaceIdSchema = z.enum(["konbini", "hoteru", "shokudo", "kuko"]);
 const speedGradeSchema = z.enum(["perfect", "good", "ok", "late"]);
 
@@ -40,11 +43,11 @@ const regularStateSchema = z
 const todayProgressSchema = z
   .object({
     date: localDateSchema,
-    completed: z.array(shiftSlotSchema).max(3),
+    completed: z.array(shiftSlotSchema).max(SHIFT_SLOTS.length),
   })
   .strict();
 
-/** 8개 ItemTag 모두를 키로 갖는 가중치 맵 */
+/** ItemTag 모두를 키로 갖는 가중치 맵 (예전 세이브는 클라이언트가 normalizeProfile 로 채운 뒤 보낸다) */
 const tagWeightsSchema = z.record(itemTagSchema, z.number().finite());
 
 export const playerProfileSchema = z
@@ -52,6 +55,9 @@ export const playerProfileSchema = z
     name: z.string().trim().min(1, "이름은 1자 이상").max(20, "이름은 20자 이하"),
     wage: z.number().int().min(0).max(99_999),
     totalShifts: count,
+    // 승급 시험 제도 이전 저장분(rank 없음)은 normalizeProfile 이 누적 시프트 수로 직급을 유도한다
+    rank: rankIdSchema.optional(),
+    examWeek: localDateSchema.nullable().optional(),
     streak: count,
     lastPlayDate: localDateSchema.nullable(),
     leavesLeft: nonNegativeInt.max(31),
@@ -62,7 +68,8 @@ export const playerProfileSchema = z
     today: todayProgressSchema,
     updatedAt: isoDateTimeSchema,
   })
-  .strict();
+  .strict()
+  .transform((raw): PlayerProfile => normalizeProfile(raw));
 
 export type PlayerProfileInput = z.infer<typeof playerProfileSchema>;
 
@@ -93,6 +100,14 @@ const hardestPhraseSchema = z
   })
   .strict();
 
+const examResultSchema = z
+  .object({
+    rank: rankIdSchema,
+    comboRequired: count,
+    passed: z.boolean(),
+  })
+  .strict();
+
 export const shiftSummarySchema = z
   .object({
     workplaceId: workplaceIdSchema,
@@ -116,6 +131,8 @@ export const shiftSummarySchema = z
     firstSuccessTags: z.array(itemTagSchema).max(ITEM_TAGS.length),
     regularsMet: z.array(z.string().max(64)).max(100),
     endedBy: z.enum(["time", "customers", "manager"]),
+    exam: examResultSchema.nullable().default(null),
+    events: count.default(0),
     /** 추후 분석용 로그 — 폭주 방지를 위해 2000개로 제한 */
     answers: z.array(answerLogSchema).max(2000),
   })
@@ -150,4 +167,5 @@ export type AssertTodayProgressMatches = Assert<Equals<z.infer<typeof todayProgr
 export type AssertShiftSummaryMatches = Assert<Equals<ShiftSummaryInput, ShiftSummary>>;
 export type AssertAnswerLogMatches = Assert<Equals<z.infer<typeof answerLogSchema>, AnswerLog>>;
 export type AssertHardestPhraseMatches = Assert<Equals<z.infer<typeof hardestPhraseSchema>, HardestPhrase>>;
+export type AssertExamResultMatches = Assert<Equals<z.infer<typeof examResultSchema>, ExamResult>>;
 export type AssertCreateSessionBodyMatches = Assert<Equals<CreateSessionBodyInput, CreateSessionBody>>;

@@ -7,10 +7,28 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CustomerReply, ItemTag, Regular, ShiftSlot, ShiftState, ShiftSummary, WorkplaceContent } from "@/engine/types";
-import { currentKind, questionRemainingMs, shiftProgress, summarize } from "@/engine/shift";
+import type {
+  CustomerReply,
+  ExamContext,
+  ItemTag,
+  ManagerLine,
+  Regular,
+  ShiftSlot,
+  ShiftState,
+  ShiftSummary,
+  WorkplaceContent,
+} from "@/engine/types";
+import { currentKind, currentPrompt, questionRemainingMs, shiftProgress, summarize } from "@/engine/shift";
 import { PATIENCE_MAX } from "@/engine/scoring";
-import { playSfx, speakJa, stopSpeaking, unlockAudio } from "@/lib/audio";
+import {
+  comboLayerLevel,
+  playSfx,
+  speakJa,
+  startComboLayer,
+  stopComboLayer,
+  stopSpeaking,
+  unlockAudio,
+} from "@/lib/audio";
 import { isSpeechRecognitionSupported, listenOnce, matchSpoken, type ListenSession } from "@/lib/speech";
 import { Screen } from "@/components/ui";
 import { useGameStore } from "@/store/gameStore";
@@ -22,10 +40,14 @@ import { PauseOverlay, PreShiftSheet, ShiftEndOverlay } from "./ShiftOverlays";
 import {
   anonymousVisual,
   customerName,
+  defaultShowKana,
   pickFirstWords,
+  pickManagerLine,
   regularLeaveLine,
   saveLastReceipt,
+  SHOW_KANA_KEY,
   SHOW_KO_KEY,
+  tobaccoShelfNumbers,
 } from "./shiftModel";
 import { useShift } from "./useShift";
 
@@ -37,6 +59,10 @@ export interface ShiftBoardProps {
   unlockedTags: ItemTag[];
   /** 말하기 모드 해금 여부(직급·레벨). 브라우저 지원 여부는 보드가 따로 본다 */
   speakingUnlocked?: boolean;
+  /** 플레이 중인 달(1~12) — 시즌 상품·포스터·규칙 */
+  month?: number;
+  /** 승급 시험(점장 점검 시프트)이면 그 정보 */
+  exam?: ExamContext | null;
 }
 
 /** 말하기 버튼 상태 */
@@ -56,7 +82,10 @@ const END_DELAY_MS = { normal: 1400, manager: 2800 } as const;
 const RECEIPT_PATH = "/konbini/receipt?latest=1";
 const HOME_PATH = "/konbini";
 
-/** 단계별 말풍선: 입장 = 레귤러 첫마디, 응답 = 엔진 말풍선, 퇴장 = 이탈 대사 또는 레귤러 호감도 대사 */
+/**
+ * 단계별 말풍선: 입장 = 레귤러 첫마디, 질문 = 손님의 요구(LISTEN·담배 번호·돌발 이벤트) 또는 레귤러 첫마디,
+ * 응답 = 엔진 말풍선, 퇴장 = 이탈 대사 또는 레귤러 호감도 대사
+ */
 function resolveBubble(
   state: ShiftState,
   enterWords: CustomerReply | null,
@@ -66,9 +95,13 @@ function resolveBubble(
   switch (state.phase) {
     case "enter":
       return enterWords;
-    case "question":
+    case "question": {
+      // 손님이 먼저 말한 요구가 있으면 그것이 곧 문제다 — 재시도 중에도 계속 보인다
+      const prompt = currentPrompt(state);
+      if (prompt) return prompt;
       // 레귤러의 첫마디(「袋いい」 같은 단서)는 첫 질문에 답할 때까지 남겨 둔다
       return state.stepIndex === 0 && state.wrongOnStep === 0 ? enterWords : null;
+    }
     case "reply":
       return state.bubble;
     case "leave":
@@ -88,6 +121,25 @@ function readShowKo(): boolean {
   }
 }
 
+/** 후리가나 초기값 — 저장값 우선, 없으면 Lv1~2 ON · Lv3+ OFF */
+function readShowKana(level: number): boolean {
+  let stored: string | null = null;
+  try {
+    stored = window.localStorage.getItem(SHOW_KANA_KEY);
+  } catch {
+    stored = null;
+  }
+  return defaultShowKana(level, stored);
+}
+
+function persistFlag(key: string, value: boolean): void {
+  try {
+    window.localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    /* noop */
+  }
+}
+
 export function ShiftBoard({
   content,
   slot,
@@ -95,6 +147,8 @@ export function ShiftBoard({
   regularsAvailable,
   unlockedTags,
   speakingUnlocked = false,
+  month,
+  exam = null,
 }: ShiftBoardProps) {
   const router = useRouter();
   const config = content.shifts[slot];
@@ -110,12 +164,17 @@ export function ShiftBoard({
     tagWeights: initialTagWeights,
     regularsAvailable,
     unlockedTags,
+    month,
+    exam,
   });
 
   const [pressedId, setPressedId] = useState<string | null>(null);
   const [gradeFlash, setGradeFlash] = useState<GradeFlash | null>(null);
   // 이 컴포넌트는 복원 뒤 클라이언트에서만 마운트되므로 초기값을 localStorage 에서 바로 읽어도 안전하다
   const [showKo, setShowKo] = useState<boolean>(() => (typeof window === "undefined" ? false : readShowKo()));
+  const [showKana, setShowKana] = useState<boolean>(() =>
+    typeof window === "undefined" ? defaultShowKana(config.level, null) : readShowKana(config.level),
+  );
   const [manualPaused, setManualPaused] = useState(false);
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
 
@@ -132,11 +191,14 @@ export function ShiftBoard({
   const toggleKo = useCallback(() => {
     setShowKo((prev) => {
       const next = !prev;
-      try {
-        window.localStorage.setItem(SHOW_KO_KEY, next ? "1" : "0");
-      } catch {
-        /* noop */
-      }
+      persistFlag(SHOW_KO_KEY, next);
+      return next;
+    });
+  }, []);
+  const toggleKana = useCallback(() => {
+    setShowKana((prev) => {
+      const next = !prev;
+      persistFlag(SHOW_KANA_KEY, next);
       return next;
     });
   }, []);
@@ -150,6 +212,10 @@ export function ShiftBoard({
 
   const kind = currentKind(state);
   const showPayment = kind === "PAY" && (state.phase === "question" || state.phase === "reply");
+  // 담배를 다루는 시프트면 뒷벽에 담배 선반 — 지금 선택지에 있는 번호는 빼서 정답이 보이지 않게 한다
+  const tobaccoShelf = state.activeTags.includes("tobacco")
+    ? tobaccoShelfNumbers(kind === "TOBACCO_PICK" ? state.options : [], customer?.tobaccoNumber ?? null)
+    : [];
   const skippable = started && !paused && (state.phase === "enter" || state.phase === "reply" || state.phase === "leave");
   const questionTotalMs = config.questionTimeSec * 1000;
 
@@ -157,6 +223,8 @@ export function ShiftBoard({
   const prevRef = useRef<ShiftState | null>(null);
   const wordsHeardRef = useRef<Map<string, Set<string>>>(new Map());
   const flashKey = useRef(0);
+  // 마지막으로 읽어 준 손님 요구의 "손님:질문" 키 — 같은 질문 재시도에서 다시 읽지 않기 위해
+  const spokenPromptRef = useRef<string | null>(null);
 
   useEffect(() => {
     const prev = prevRef.current;
@@ -204,8 +272,26 @@ export function ShiftBoard({
     if (state.phase === "question" && prev.phase !== "question") {
       setPressedId(null);
       setSpeechNote(null);
+      // 손님이 먼저 말하는 질문(LISTEN·담배 번호·돌발 이벤트)은 새 질문이 열릴 때 한 번 읽어 준다(재시도 땐 생략)
+      const promptKey = `${state.customerIndex}:${state.stepIndex}`;
+      const prompt = currentPrompt(state);
+      if (prompt && promptKey !== spokenPromptRef.current) {
+        spokenPromptRef.current = promptKey;
+        if (audioEnabled) {
+          speakJa(prompt.ja, { voice: "customer", lang: state.customer?.tourist ? "en-US" : "ja-JP" });
+        }
+      }
     }
   }, [state, audioEnabled, content.regulars, seed]);
+
+  /* ───────── 콤보 BGM 레이어: 콤보 5 에서 하이햇, 10 에서 베이스. 끊기면·멈추면·마감이면 페이드아웃 ───────── */
+  const layerLevel = comboLayerLevel(state.combo);
+  const layerActive = started && !paused && state.phase !== "done" && audioEnabled && layerLevel > 0;
+  useEffect(() => {
+    if (layerActive) startComboLayer(layerLevel);
+    else stopComboLayer();
+  }, [layerActive, layerLevel]);
+  useEffect(() => () => stopComboLayer(), []);
 
   /* ───────── 입력 ───────── */
   const handleStart = useCallback(() => {
@@ -346,13 +432,20 @@ export function ShiftBoard({
     [],
   );
 
-  const managerCallLine = content.manager.find((line) => line.when === "shift_end_bad") ?? null;
+  // 마감 한마디: 시험이면 합격/불합격 대사, 점장 호출이면 shift_end_bad
+  const endLine: ManagerLine | null = summary
+    ? summary.exam
+      ? pickManagerLine(content, summary.exam.passed ? "exam_pass" : "exam_fail", seed)
+      : summary.endedBy === "manager"
+        ? pickManagerLine(content, "shift_end_bad", seed)
+        : null
+    : null;
 
   /* ───────── 렌더 ───────── */
   return (
     <Screen
       tone="surface"
-      theme={slot === "yoru" ? "shinya" : undefined}
+      theme={slot === "yoru" || slot === "shinya" ? "shinya" : undefined}
       workplace={content.id}
       className="h-dvh max-h-dvh overflow-hidden"
     >
@@ -364,6 +457,9 @@ export function ShiftBoard({
         combo={state.combo}
         paused={paused}
         onPause={pause}
+        exam={state.exam}
+        maxCombo={state.maxCombo}
+        missed={state.missed}
       />
       <SceneStage
         className="mt-3.5 h-[min(340px,40dvh)]"
@@ -380,11 +476,18 @@ export function ShiftBoard({
         skippable={skippable}
         onSkip={skip}
         empty={!customer || state.phase === "done"}
+        event={customer?.event ?? null}
+        direction={customer?.direction ?? null}
+        drunk={customer?.drunk ?? false}
+        tourist={customer?.tourist ?? false}
+        season={state.season}
+        tobaccoShelf={tobaccoShelf}
       />
       <PosPanel
         registerLabel={content.registerLabel}
         total={customer?.total ?? null}
         phase={state.phase}
+        kind={kind}
         options={state.options}
         pressedId={pressedId}
         wrongOnStep={state.wrongOnStep}
@@ -394,6 +497,8 @@ export function ShiftBoard({
         questionTotalMs={questionTotalMs}
         showKo={showKo}
         onToggleKo={toggleKo}
+        showKana={showKana}
+        onToggleKana={toggleKana}
         onAnswer={handleAnswer}
         speech={speechUi}
         interim={interim}
@@ -401,15 +506,11 @@ export function ShiftBoard({
         onSpeak={speak}
       />
 
-      {!started ? <PreShiftSheet content={content} config={config} ready onStart={handleStart} /> : null}
-      {started && manualPaused && state.phase !== "done" ? <PauseOverlay onResume={resume} onQuit={quit} /> : null}
-      {summary ? (
-        <ShiftEndOverlay
-          endedBy={summary.endedBy}
-          managerLine={summary.endedBy === "manager" ? managerCallLine : null}
-          onContinue={goReceipt}
-        />
+      {!started ? (
+        <PreShiftSheet content={content} config={config} ready onStart={handleStart} exam={state.exam} season={state.season} />
       ) : null}
+      {started && manualPaused && state.phase !== "done" ? <PauseOverlay onResume={resume} onQuit={quit} /> : null}
+      {summary ? <ShiftEndOverlay endedBy={summary.endedBy} managerLine={endLine} exam={summary.exam} onContinue={goReceipt} /> : null}
     </Screen>
   );
 }
